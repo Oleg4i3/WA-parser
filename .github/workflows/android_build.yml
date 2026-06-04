@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Fixed Syntax
+name: Zero to Hero APK Generator - International Fix
 
 on:
   push:
@@ -131,7 +131,7 @@ jobs:
         </manifest>
         EOF
 
-    # 8. Конфиг Спец. возможностей
+    # 8. Конфиг Спец. возможностей (нацелен на WhatsApp)
     - name: Generate Accessibility Config
       run: |
         cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
@@ -151,11 +151,11 @@ jobs:
         cat << 'EOF' > app/src/main/res/values/strings.xml
         <resources>
             <string name="app_name">WA Call Parser</string>
-            <string name="accessibility_service_description">Автоматически собирает историю звонков из WhatsApp и сохраняет в CSV.</string>
+            <string name="accessibility_service_description">Automatically extracts WhatsApp call history and saves it to a CSV file.</string>
         </resources>
         EOF
 
-    # 10. MainActivity на Kotlin (Синтаксически чистая реализация)
+    # 10. Генерируем MainActivity.kt
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -171,7 +171,7 @@ jobs:
             override fun onCreate(savedInstanceState: Bundle?) {
                 super.onCreate(savedInstanceState)
                 val button = Button(this)
-                button.text = "1. Включить службу\n2. Открыть Звонки в WA"
+                button.text = "1. Enable Service\n2. Open WhatsApp Calls"
                 button.setOnClickListener {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     startActivity(intent)
@@ -181,7 +181,7 @@ jobs:
         }
         EOF
 
-    # 11. WhatsappParserService на Kotlin (Без скрытых спецсимволов в логах)
+    # 11. Генерируем WhatsappParserService.kt (Адаптирован под английский UI + Toast уведомления)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -191,75 +191,96 @@ jobs:
         import android.view.accessibility.AccessibilityEvent
         import android.view.accessibility.AccessibilityNodeInfo
         import android.util.Log
+        import android.widget.Toast
         import java.io.File
         import android.os.Environment
+        import android.os.Handler
+        import android.os.Looper
 
         class WhatsappParserService : AccessibilityService() {
             private val callLogs = mutableSetOf<String>()
+            private val handler = Handler(Looper.getMainLooper())
 
             override fun onAccessibilityEvent(event: AccessibilityEvent) {
                 val rootNode = rootInActiveWindow ?: return
-                val texts = mutableListOf<String>()
+                val foundTexts = mutableListOf<String>()
                 
-                collectTexts(rootNode, texts)
+                extractAllTexts(rootNode, foundTexts)
                 
-                var hasNew = false
-                for (i in 0 until texts.size) {
-                    val text = texts[i]
-                    if (text.contains("вызов") || text.contains("звонок") || text.contains(":") || text.matches(".*\\d{2}.*".toRegex())) {
-                        val contact = texts.getOrNull(i - 1) ?: "Unknown"
-                        if (callLogs.add("$contact;$text")) {
-                            hasNew = true
+                var hasNewElements = false
+
+                for (i in 0 until foundTexts.size) {
+                    val currentText = foundTexts[i].trim()
+                    
+                    // Универсальные маркеры времени звонка для EN/RU интерфейсов (минуты, AM/PM, вчера/вчерашние даты)
+                    if (currentText.contains(":") || currentText.contains(",", ignoreCase = true) || currentText.contains("yesterday", ignoreCase = true) || currentText.matches(".*\\d{2}.*".toRegex())) {
+                        val potentialContact = foundTexts.getOrNull(i - 1)?.trim() ?: "Unknown"
+                        
+                        if (potentialContact.length > 1 && potentialContact != currentText) {
+                            val logLine = "$potentialContact;$currentText"
+                            if (callLogs.add(logLine)) {
+                                hasNewElements = true
+                                showToast("Found: $potentialContact")
+                            }
                         }
                     }
                 }
 
-                val scrollableNode = findScrollable(rootNode)
-                if (scrollableNode != null && hasNew) {
+                val scrollableNode = findScrollableContainer(rootNode)
+                if (scrollableNode != null && hasNewElements) {
                     scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                } else if (!hasNew && callLogs.isNotEmpty()) {
-                    saveLogs()
+                } else if (!hasNewElements && callLogs.isNotEmpty()) {
+                    saveLogsToDisk()
                 }
             }
 
-            private fun collectTexts(node: AccessibilityNodeInfo?, list: MutableList<String>) {
+            private fun extractAllTexts(node: AccessibilityNodeInfo?, list: MutableList<String>) {
                 if (node == null) return
-                val className = node.className
-                if (className != null && className.toString() == "android.widget.TextView" && node.text != null) {
-                    list.add(node.text.toString())
+                val nodeText = node.text?.toString() ?: node.contentDescription?.toString()
+                if (nodeText != null && nodeText.isNotEmpty()) {
+                    list.add(nodeText)
                 }
                 for (i in 0 until node.childCount) {
                     val child = node.getChild(i)
                     if (child != null) {
-                        collectTexts(child, list)
+                        extractAllTexts(child, list)
                     }
                 }
             }
 
-            private fun findScrollable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            private fun findScrollableContainer(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
                 if (node == null) return null
                 if (node.isScrollable) return node
                 for (i in 0 until node.childCount) {
                     val child = node.getChild(i)
                     if (child != null) {
-                        val res = findScrollable(child)
-                        if (res != null) return res
+                        val result = findScrollableContainer(child)
+                        if (result != null) return result
                     }
                 }
                 return null
             }
 
-            private fun saveLogs() {
+            private fun saveLogsToDisk() {
                 try {
                     val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                     if (dir != null) {
                         val file = File(dir, "whatsapp_calls_archive.csv")
-                        file.writeText("Контакт;Информация\n" + callLogs.joinToString("\n"))
-                        Log.d("WAParser", "Logs saved to: ${file.absolutePath}")
+                        val header = "Contact;Details\n"
+                        file.writeText(header + callLogs.joinToString("\n"))
+                        
+                        showToast("Success! Saved ${callLogs.size} logs to Downloads")
+                        Log.d("WAParser", "File written to: ${file.absolutePath}")
                     }
                     disableSelf()
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Save error", e)
+                    Log.e("WAParser", "Write error", e)
+                }
+            }
+
+            private fun showToast(message: String) {
+                handler.post {
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -280,14 +301,14 @@ jobs:
         curl -sL https://services.gradle.org/distributions/gradle-8.6-bin.zip -o gradle.zip
         unzip -q gradle.zip
 
-    # 14. Запуск компиляции
+    # 14. Сборка APK
     - name: Build Debug APK via Isolated Gradle 8.6
       run: ./gradle-8.6/bin/gradle assembleDebug
 
-    # 15. Выгрузка готового APK в артефакты GitHub
+    # 15. Отправка APK в артефакты сборки
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: fixed-syntax-whatsapp-parser
+        name: international-whatsapp-parser
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
