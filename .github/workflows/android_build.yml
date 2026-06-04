@@ -1,4 +1,4 @@
-name: Targeted WA Parser Generator
+name: Production Grade WA Parser
 
 on:
   push:
@@ -18,6 +18,7 @@ jobs:
         mkdir -p app/src/main/java/com/example/waparser
         mkdir -p app/src/main/res/xml
         mkdir -p app/src/main/res/values
+        mkdir -p app/src/main/res/drawable
 
     - name: Generate gradle.properties
       run: |
@@ -92,6 +93,31 @@ jobs:
         }
         EOF
 
+    # ИКОНКА ПРИЛОЖЕНИЯ (Пункт 3): Создаем красивый векторный логотип аналитика + звонки
+    - name: Generate App Vector Icon
+      run: |
+        cat << 'EOF' > app/src/main/res/drawable/ic_app_logo.xml
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="108dp"
+            android:height="108dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+            <path
+                android:fillColor="#075E54"
+                android:pathData="M54,54m-48,0a48,48 0,1 1,96 0a48,48 0,1 1,-96 0"/>
+            <path
+                android:fillColor="#25D366"
+                android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M35,35h38v6h-38z M35,47h26v6h-26z M35,59h32v6h-32z M35,71h18v6h-18z"/>
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M65,77l12,-12l-5,-5l-7,7l-3,-3l-2,2z"/>
+        </vector>
+        EOF
+
+    # МАНИФЕСТ: Подвязываем новую иконку вместо дефолтной сетки
     - name: Generate AndroidManifest.xml
       run: |
         cat << 'EOF' > app/src/main/AndroidManifest.xml
@@ -101,7 +127,9 @@ jobs:
             
             <application
                 android:allowBackup="true"
-                android:label="WA Targeted Parser"
+                android:label="WA Call Tracker"
+                android:icon="@drawable/ic_app_logo"
+                android:roundIcon="@drawable/ic_app_logo"
                 android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                 <activity
                     android:name=".MainActivity"
@@ -143,21 +171,22 @@ jobs:
       run: |
         cat << 'EOF' > app/src/main/res/values/strings.xml
         <resources>
-            <string name="app_name">WA Targeted Parser</string>
-            <string name="accessibility_service_description">Targeted Call Log Analytics Engine for WhatsApp.</string>
+            <string name="app_name">WA Call Tracker</string>
+            <string name="accessibility_service_description">Advanced Call Metrics Extractor for WhatsApp.</string>
         </resources>
         EOF
 
-    # ИНТЕРФЕЙС: Добавлены поля фильтра, чекбокс и вывод отчета
+    # ИНТЕРФЕЙС: ScrollView для бесконечных таблиц + Моноширинный шрифт для красивых колонок
     - name: Generate MainActivity.kt
       run: |
-        cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
+        cat << 'EOF' > app/src/main/java/com/example/waparser
         package com.example.waparser
         
         import android.content.Intent
         import android.net.Uri
         import android.os.Bundle
         import android.provider.Settings
+        import android.view.Typeface
         import android.widget.*
         import androidx.appcompat.app.AppCompatActivity
 
@@ -170,7 +199,7 @@ jobs:
                 
                 fun updateReportOnUI(report: String) {
                     instance?.runOnUiThread {
-                        val tvReport = instance?.findViewById<TextView>(1005)
+                        val tvReport = instance?.findViewById<TextView>(2001)
                         tvReport?.text = report
                     }
                 }
@@ -180,92 +209,82 @@ jobs:
                 super.onCreate(savedInstanceState)
                 instance = this
                 
+                val scrollView = ScrollView(this)
                 val layout = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(50, 50, 50, 50)
+                    setPadding(45, 45, 45, 45)
                 }
 
-                // 1. Права доступности
                 val btnAccessibility = Button(this).apply {
                     text = "1. Enable Accessibility Service"
-                    setOnClickListener {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
+                }
+                btnAccessibility.setOnClickListener {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
 
-                // 2. Права оверлея
                 val btnOverlayPerm = Button(this).apply {
                     text = "2. Grant Overlay Permission"
-                    setOnClickListener {
-                        if (!Settings.canDrawOverlays(this@MainActivity)) {
-                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                            startActivity(intent)
-                        } else {
-                            Toast.makeText(this@MainActivity, "Overlay allowed!", Toast.LENGTH_SHORT).show()
-                        }
+                }
+                btnOverlayPerm.setOnClickListener {
+                    if (!Settings.canDrawOverlays(this@MainActivity)) {
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(this@MainActivity, "Overlay already allowed", Toast.LENGTH_SHORT).show()
                     }
                 }
 
-                // Инструкция ввода фильтра
                 val lblFilter = TextView(this).apply {
-                    text = "Target Contact Name Filter:"
-                    textSize = 16f
-                    setPadding(0, 30, 0, 10)
+                    text = "Contact Filter (Leave empty to scan EVERYONE):"
+                    textSize = 15f
+                    setPadding(0, 25, 0, 5)
+                    setTypeface(null, Typeface.BOLD)
                 }
 
-                // Поле ввода имени
                 val txtFilter = EditText(this).apply {
-                    hint = "e.g. John Doe"
+                    hint = "e.g. John Doe (or blank)"
                     setText(filterContactName)
                 }
 
-                // Чекбокс фильтрации дней
                 val chkDays = CheckBox(this).apply {
-                    text = "Count unique days instead of total calls"
+                    text = "Count unique days instead of calls"
                     isChecked = countDaysOnly
                 }
 
-                // 3. Запуск контроллера
                 val btnLaunchOverlay = Button(this).apply {
-                    text = "3. Launch Control Overlay"
-                    setBackgroundColor(0xFF007ACC.toInt())
+                    text = "3. Launch Overlay Controller"
+                    setBackgroundColor(0xFF075E54.toInt())
                     setTextColor(0xFFFFFFFF.toInt())
-                    setOnClickListener {
-                        filterContactName = txtFilter.text.toString().trim()
-                        countDaysOnly = chkDays.isChecked
-                        
-                        if (filterContactName.isEmpty()) {
-                            Toast.makeText(this@MainActivity, "Please enter a contact name!", Toast.LENGTH_SHORT).show()
-                            return@setOnClickListener
-                        }
-                        
-                        val service = WhatsappParserService.instance
-                        if (service != null) {
-                            if (Settings.canDrawOverlays(this@MainActivity)) {
-                                service.createFloatingButton()
-                                Toast.makeText(this@MainActivity, "Overlay Ready! Open WA Calls", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(this@MainActivity, "Grant Overlay Perm First!", Toast.LENGTH_SHORT).show()
-                            }
+                }
+                btnLaunchOverlay.setOnClickListener {
+                    filterContactName = txtFilter.text.toString().trim()
+                    countDaysOnly = chkDays.isChecked
+                    
+                    val service = WhatsappParserService.instance
+                    if (service != null) {
+                        if (Settings.canDrawOverlays(this@MainActivity)) {
+                            service.createFloatingButton()
+                            Toast.makeText(this@MainActivity, "Control Overlay Ready!", Toast.LENGTH_SHORT).show()
                         } else {
-                            Toast.makeText(this@MainActivity, "Accessibility Service NOT running!", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, "Please allow overlay first!", Toast.LENGTH_SHORT).show()
                         }
+                    } else {
+                        Toast.makeText(this@MainActivity, "Accessibility Service NOT active!", Toast.LENGTH_LONG).show()
                     }
                 }
 
-                // Заголовок отчета
                 val lblReportHeader = TextView(this).apply {
-                    text = "--- ANALYTICS REPORT ---"
-                    textSize = 18f
-                    setPadding(0, 50, 0, 10)
+                    text = "\n=== PARSE ANALYTICS REPORT ==="
+                    textSize = 16f
+                    setTypeface(null, Typeface.BOLD)
                 }
 
-                // Окно вывода результатов
                 val tvReport = TextView(this).apply {
-                    id = 1005
-                    text = "No analytics gathered yet. Use overlay inside WhatsApp."
-                    textSize = 16f
-                    setTextColor(0xFF222222.toInt())
+                    id = 2001
+                    text = "No metrics collected yet. Trigger the overlay scan inside WhatsApp."
+                    textSize = 14f
+                    typeface = Typeface.MONOSPACE  // Обеспечивает ровные колонки таблицы
+                    setTextColor(0xFF111111.toInt())
                 }
 
                 layout.addView(btnAccessibility)
@@ -276,12 +295,14 @@ jobs:
                 layout.addView(btnLaunchOverlay)
                 layout.addView(lblReportHeader)
                 layout.addView(tvReport)
-                setContentView(layout)
+                
+                scrollView.addView(layout)
+                setContentView(scrollView)
             }
         }
         EOF
 
-    # ДВИЖОК СЕРВИСА: Логика снайперского парсинга, ручной остановки и подсчета
+    # ДВИЖОК СЕРВИСА: Реализация ветвления логики (Пункт 1 и Пункт 2)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -307,12 +328,12 @@ jobs:
         import android.net.Uri
 
         class WhatsappParserService : AccessibilityService() {
-            // Храним только метки времени для отфильтрованного пользователя в порядке их обнаружения
-            private val collectedTimestamps = mutableListOf<String>()
+            // Структурированная база данных: Контакт -> Список всех его временных меток звонков
+            private val globalLogsMap = mutableMapOf<String, MutableList<String>>()
             private val handler = Handler(Looper.getMainLooper())
             private var windowManager: WindowManager? = null
             private var floatingButton: Button? = null
-            private var blankCounter = 0
+            private var emptyPassStreak = 0
             private var isParsingActive = false
 
             companion object {
@@ -326,52 +347,49 @@ jobs:
             override fun onServiceConnected() {
                 super.onServiceConnected()
                 instance = this
-                showToast("Targeted Core Activated!")
+                showToast("Data Harvester Core Active!")
             }
 
             override fun onAccessibilityEvent(event: AccessibilityEvent) {}
 
             fun createFloatingButton() {
                 if (floatingButton != null) {
-                    windowManager?.removeView(floatingButton)
+                    try { windowManager?.removeView(floatingButton) } catch(e: Exception){}
                     floatingButton = null
                 }
                 try {
                     windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
                     floatingButton = Button(this).apply {
                         text = "START SCAN"
-                        setBackgroundColor(0xFF00AA00.toInt()) // Green
+                        setBackgroundColor(0xFF25D366.toInt()) // WA Green
                         setTextColor(0xFFFFFFFF.toInt())
-                        textSize = 14f
                         setOnClickListener {
                             if (this@WhatsappParserService.isParsingActive) {
-                                // Кнопка работает как СТОП триггер во время сканирования
-                                this@WhatsappParserService.showToast("Interrupt requested. Building report...")
-                                this@WhatsappParserService.saveLogsAndGenerateReport()
+                                this@WhatsappParserService.showToast("Halting & processing data...")
+                                this@WhatsappParserService.processAndBuildReport()
                             } else {
                                 text = "[STOP & REPORT]"
-                                setBackgroundColor(0xFFDD0000.toInt()) // Bright Red
-                                this@WhatsappParserService.collectedTimestamps.clear()
-                                this@WhatsappParserService.blankCounter = 0
+                                setBackgroundColor(0xFFCC0000.toInt()) // Danger Red
+                                this@WhatsappParserService.globalLogsMap.clear()
+                                this@WhatsappParserService.emptyPassStreak = 0
                                 this@WhatsappParserService.parseCurrentScreenAndScroll()
                             }
                         }
                     }
 
                     val params = WindowManager.LayoutParams(
-                        380, // Фиксированная ширина для надежного отображения
-                        140, // Фиксированная высота
+                        360, 140,
                         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                         PixelFormat.TRANSLUCENT
                     ).apply {
                         gravity = Gravity.TOP or Gravity.END
                         x = 30
-                        y = 400
+                        y = 420
                     }
                     windowManager?.addView(floatingButton, params)
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Overlay creation error", e)
+                    Log.e("WAParser", "Overlay Window Error", e)
                 }
             }
 
@@ -379,7 +397,7 @@ jobs:
                 isParsingActive = true
                 val rootNode = rootInActiveWindow
                 if (rootNode == null) {
-                    showToast("Error: Blind screen. Open WhatsApp.")
+                    showToast("Error: Canvas Blind. Open WA Calls tab.")
                     resetOverlayButton()
                     isParsingActive = false
                     return
@@ -388,147 +406,190 @@ jobs:
                 val foundTexts = mutableListOf<String>()
                 extractAllTexts(rootNode, foundTexts)
                 
-                val targetContact = MainActivity.filterContactName.lowercase()
-                var addedInThisPass = 0
+                val targetFilter = MainActivity.filterContactName.lowercase()
+                var addedInThisSwipe = 0
 
-                // Снайперский поиск по элементам экрана
+                // Пробегаем по структуре экрана
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
                     
-                    if (currentText.lowercase().contains(targetContact)) {
-                        // Нашли имя. Теперь ищем метку времени рядом в дереве элементов
-                        var timestamp = ""
-                        val checkOffsets = listOf(1, -1, 2, -2, 3, -3)
-                        for (offset in checkOffsets) {
-                            val targetIndex = i + offset
-                            if (targetIndex in foundTexts.indices) {
-                                val candidate = foundTexts[targetIndex]
-                                if (candidate.contains(":") || candidate.contains("Today") || candidate.contains("Yesterday")) {
-                                    timestamp = candidate.trim()
-                                    break
-                                }
-                            }
-                        }
+                    // Обнаружили паттерн даты/времени звонка
+                    if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
+                        val detectedContact = findContactNameForTimestamp(foundTexts, i)
                         
-                        if (timestamp.isNotEmpty()) {
-                            if (!collectedTimestamps.contains(timestamp)) {
-                                collectedTimestamps.add(timestamp)
-                                addedInThisPass++
+                        if (detectedContact != "Unknown Contact") {
+                            val lowerContact = detectedContact.lowercase()
+                            
+                            // Проверка: Соответствует ли фильтру (если фильтр вообще задан)
+                            if (targetFilter.isEmpty() || lowerContact.contains(targetFilter)) {
+                                val currentTimestamps = globalLogsMap.getOrPut(detectedContact) { mutableListOf() }
+                                if (!currentTimestamps.contains(currentText)) {
+                                    currentTimestamps.add(currentText)
+                                    addedInThisSwipe++
+                                }
                             }
                         }
                     }
                 }
 
-                if (addedInThisPass > 0) {
-                    blankCounter = 0
-                    showToast("Found $addedInThisPass entries. Swiping...")
+                if (addedInThisSwipe > 0) {
+                    emptyPassStreak = 0
+                    showToast("Captured $addedInThisSwipe new logs. Swiping...")
                     performHardwareSwipeUp()
                 } else {
-                    blankCounter++
-                    if (blankCounter < 3) {
-                        // Попробуем проскроллить еще раз на случай микро-лагов отрисовки
+                    emptyPassStreak++
+                    if (emptyPassStreak < 3) {
                         performHardwareSwipeUp()
                     } else {
-                        showToast("End of logs reached automatically.")
-                        saveLogsAndGenerateReport()
+                        showToast("Data exhaustion reached.")
+                        processAndBuildReport()
                     }
                 }
             }
 
-            private fun performHardwareSwipeUp() {
-                val displayMetrics = resources.displayMetrics
-                val screenHeight = displayMetrics.heightPixels
-                val screenWidth = displayMetrics.widthPixels
-
-                val swipePath = Path().apply {
-                    moveTo(screenWidth / 2f, screenHeight * 0.80f)
-                    lineTo(screenWidth / 2f, screenHeight * 0.20f)
+            private fun findContactNameForTimestamp(texts: List<String>, timeIndex: Int): String {
+                val systemTrash = setOf(
+                    "recent", "calls", "search", "more options", "new call", 
+                    "incoming", "outgoing", "missed", "audio call", "video call", 
+                    "voice call", "arrow", "call again", "unanswered", "create call link"
+                )
+                for (k in timeIndex - 1 downTo 0) {
+                    val t = texts[k].trim()
+                    val tLower = t.lowercase()
+                    if (t.isEmpty() || t.length < 2 || t.contains(":")) continue
+                    
+                    var isTrash = false
+                    for (trash in systemTrash) {
+                        if (tLower.contains(trash)) { isTrash = true; break }
+                    }
+                    if (isTrash) continue
+                    return t
                 }
+                return "Unknown Contact"
+            }
 
+            private fun performHardwareSwipeUp() {
+                val metrics = resources.displayMetrics
+                val swipePath = Path().apply {
+                    moveTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.78f)
+                    lineTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.22f)
+                }
                 val gestureBuilder = GestureDescription.Builder()
-                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 400))
+                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 420))
 
-                val dispatched = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+                val status = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         super.onCompleted(gestureDescription)
                         handler.postDelayed({ parseCurrentScreenAndScroll() }, 1300)
                     }
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         super.onCancelled(gestureDescription)
-                        saveLogsAndGenerateReport()
+                        processAndBuildReport()
                     }
                 }, null)
 
-                if (!dispatched) {
-                    showToast("Gesture system rejected. Re-enable accessibility.")
-                    saveLogsAndGenerateReport()
+                if (!status) {
+                    showToast("System blocked gesture. Toggle accessibility!")
+                    processAndBuildReport()
                 }
             }
 
-            private fun saveLogsAndGenerateReport() {
+            private fun processAndBuildReport() {
                 resetOverlayButton()
                 isParsingActive = false
-                
-                val target = MainActivity.filterContactName
-                if (collectedTimestamps.isEmpty()) {
-                    MainActivity.updateReportOnUI("Contact: $target\nStatus: No matching calls detected.")
-                    showToast("Analytics done: 0 records found.")
+
+                if (globalLogsMap.isEmpty()) {
+                    MainActivity.updateReportOnUI("Execution done: Zero analytical nodes discovered.")
                     return
                 }
 
-                // Хронология: WhatsApp выдает логи сверху вниз (от новейших к старейшим)
-                val lastCallDate = collectedTimestamps.first()  // Самый верхний
-                val firstCallDate = collectedTimestamps.last()   // Самый нижний в конце скролла
+                val report = StringBuilder()
+                val targetFilter = MainActivity.filterContactName
 
-                // Расчет метрики количества
-                val finalCount = if (MainActivity.countDaysOnly) {
-                    // Удаляем время (например "14:20" или ", 14:20"), оставляя только чистый день
-                    collectedTimestamps.map { 
-                        it.replace(Regex("\\b\\d{1,2}:\\d{2}\\b"), "").replace(",", "").trim() 
-                    }.distinct().size
+                if (targetFilter.isEmpty()) {
+                    // ПУНКТ 1: Имя не задано -> Группировка по ВСЕМ контактам
+                    report.append("MODE: GLOBAL SCAN (ALL CONTACTS)\n")
+                    report.append("--------------------------------------\n")
+                    
+                    for ((contact, times) in globalLogsMap) {
+                        val totalMetricsCount = if (MainActivity.countDaysOnly) {
+                            times.map { stripTimeToDay(it) }.distinct().size
+                        } else {
+                            times.size
+                        }
+                        val unit = if (MainActivity.countDaysOnly) "days" else "calls"
+                        
+                        report.append("👤 $contact\n")
+                        report.append("   • Volume: $totalMetricsCount $unit\n")
+                        report.append("   • Newest: ${times.first()}\n")
+                        report.append("   • Oldest: ${times.last()}\n")
+                        report.append("--------------------------------------\n")
+                    }
                 } else {
-                    collectedTimestamps.size
+                    // ПУНКТ 2: Имя задано -> Подробный Саммари + ТАБЛИЦА дат с группировкой дублей в один день
+                    val realKey = globalLogsMap.keys.firstOrNull()
+                    if (realKey == null) {
+                        MainActivity.updateReportOnUI("Filter mismatch: target object non-identifiable.")
+                        return
+                    }
+                    val times = globalLogsMap[realKey]!!
+                    val totalMetricsCount = if (MainActivity.countDaysOnly) {
+                        times.map { stripTimeToDay(it) }.distinct().size
+                    } else {
+                        times.size
+                    }
+                    val unitLabel = if (MainActivity.countDaysOnly) "Total active days" else "Total call events"
+
+                    report.append("TARGET ANALYSIS SUMMARY:\n")
+                    report.append("Contact Name   : $realKey\n")
+                    report.append("$unitLabel: $totalMetricsCount\n")
+                    report.append("First Call Date: ${times.last()}\n")
+                    report.append("Last Call Date : ${times.first()}\n\n")
+                    
+                    report.append("📅 DETAILED TIMELINE TABLE:\n")
+                    report.append(String.format("%-22s | %s\n", "Date / Day", "Occurrences"))
+                    report.append("--------------------------------------\n")
+
+                    // Группируем по чистым дням, сохраняя порядок обнаружения (от новых к старым)
+                    val daysMap = LinkedHashMap<String, Int>()
+                    for (t in times) {
+                        val cleanDay = stripTimeToDay(t)
+                        daysMap[cleanDay] = (daysMap[cleanDay] ?: 0) + 1
+                    }
+
+                    // Отрисовка таблицы дат
+                    for ((day, count) in daysMap) {
+                        val countString = if (count > 1) "($count)" else "1"
+                        report.append(String.format("%-22s | %s\n", day, countString))
+                    }
                 }
 
-                val metricLabel = if (MainActivity.countDaysOnly) "Total active days" else "Total call events"
+                MainActivity.updateReportOnUI(report.toString())
+                showToast("Report rendered successfully!")
+                backupToStorage(report.toString())
+            }
 
-                // Сборка текстового отчета
-                val reportBuilder = StringBuilder().apply {
-                    append("Contact Name: $target\n")
-                    append("$metricLabel: $finalCount\n")
-                    append("First Call Date: $firstCallDate\n")
-                    append("Last Call Date: $lastCallDate")
-                }.toString()
+            private fun stripTimeToDay(timestamp: String): String {
+                // Избавляется от времени "14:23", ", 11:05", оставляя только дату/день недели
+                return timestamp.replace(Regex("\\b\\d{1,2}:\\d{2}\\b"), "").replace(",", "").trim()
+            }
 
-                // Отправляем отчет обратно в MainActivity
-                MainActivity.updateReportOnUI(reportBuilder)
-                showToast("Report compiled successfully!")
-
-                // Локальный бэкап в CSV-файл на всякий случай
+            private fun backupToStorage(data: String) {
                 try {
-                    val resolver = contentResolver
                     val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, "Targeted_${target}_Report.csv")
-                        put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, "WA_Final_Analytics.txt")
+                        put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                         put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
                     }
-                    val uri: Uri? = resolver.insert(MediaStore.Files.getContentUri("external"), values)
-                    uri?.let {
-                        resolver.openOutputStream(it)?.use { out ->
-                            out.write(("Metric;Value\nContact;$target\n$metricLabel;$finalCount\nFirst;$firstCallDate\nLast;$lastCallDate\n\nRaw Timestamps:\n" + collectedTimestamps.joinToString("\n")).toByteArray())
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("WAParser", "CSV preservation failed", e)
-                }
+                    val uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+                    uri?.let { contentResolver.openOutputStream(it)?.use { out -> out.write(data.toByteArray()) } }
+                } catch (e: Exception) { Log.e("WAParser", "Backup failed", e) }
             }
 
             private fun extractAllTexts(node: AccessibilityNodeInfo?, list: MutableList<String>) {
                 if (node == null) return
                 val text = node.text?.toString() ?: node.contentDescription?.toString()
-                if (!text.isNullOrEmpty()) {
-                    list.add(text)
-                }
+                if (!text.isNullOrEmpty()) list.add(text)
                 for (i in 0 until node.childCount) {
                     val child = node.getChild(i)
                     if (child != null) extractAllTexts(child, list)
@@ -538,7 +599,7 @@ jobs:
             private fun resetOverlayButton() {
                 handler.post {
                     floatingButton?.text = "START SCAN"
-                    floatingButton?.setBackgroundColor(0xFF00AA00.toInt())
+                    floatingButton?.setBackgroundColor(0xFF25D366.toInt())
                 }
             }
 
@@ -571,6 +632,6 @@ jobs:
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: targeted-smart-parser
+        name: production-grade-tracker
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
