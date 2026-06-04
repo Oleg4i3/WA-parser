@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Radical Fix
+name: Zero to Hero APK Generator - Fixed Build
 
 on:
   push:
@@ -156,7 +156,7 @@ jobs:
         </resources>
         EOF
 
-    # 10. Генерируем MainActivity.kt (Прямой линк на службу)
+    # 10. Генерируем MainActivity.kt
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -243,7 +243,7 @@ jobs:
         }
         EOF
 
-    # 11. Генерируем WhatsappParserService.kt (Физический свайп + умный сбор имён)
+    # 11. Генерируем WhatsappParserService.kt (Тотальное исправление типов и расположения showToast)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -280,6 +280,13 @@ jobs:
                 var instance: WhatsappParserService? = null
             }
 
+            // Выносим на самый верх класса, чтобы компилятор видел метод первее сложных функций
+            fun showToast(message: String) {
+                handler.post {
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+
             override fun onServiceConnected() {
                 super.onServiceConnected()
                 instance = this
@@ -296,7 +303,6 @@ jobs:
             }
 
             override fun onAccessibilityEvent(event: AccessibilityEvent) {
-                // Mode C: Автостарт от обычного ручного скролла внутри WhatsApp
                 if (!isParsingActive && event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                     val pkg = event.packageName?.toString()
                     if (pkg == "com.whatsapp") {
@@ -361,7 +367,6 @@ jobs:
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
                     
-                    // Обнаруживаем маркеры даты/времени
                     if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
                         val contactName = findNameForTime(foundTexts, i)
                         
@@ -381,7 +386,6 @@ jobs:
                 } else {
                     noNewDataCounter++
                     if (noNewDataCounter < 3) {
-                        // Даем 3 попытки свайпнуть на случай микрозадержек прогрузки интерфейса
                         showToast("No new records, trying swipe (${noNewDataCounter}/3)...")
                         performHardwareSwipeUp()
                     } else {
@@ -396,7 +400,6 @@ jobs:
                     "incoming", "outgoing", "missed", "audio call", "video call", 
                     "voice call", "arrow", "call again", "unanswered"
                 )
-                // Двигаемся назад от времени, отбрасывая мусор, чтобы найти чистое имя
                 for (k in timeIndex - 1 downTo 0) {
                     val t = texts[k].trim()
                     val tLower = t.lowercase()
@@ -422,7 +425,6 @@ jobs:
                 val screenHeight = displayMetrics.heightPixels
                 val screenWidth = displayMetrics.widthPixels
 
-                // Точки для жесткого свайпа снизу вверх (прокрутка списка вниз)
                 val startX = screenWidth / 2f
                 val startY = screenHeight * 0.8f
                 val endX = screenWidth / 2f
@@ -439,7 +441,6 @@ jobs:
                 dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         super.onCompleted(gestureDescription)
-                        // Ждем завершения анимации прокрутки и сканируем экран заново
                         handler.postDelayed({ parseCurrentScreenAndScroll() }, 1500)
                     }
                     override fun onCancelled(gestureDescription: GestureDescription?) {
@@ -474,8 +475,9 @@ jobs:
                     
                     val uri: Uri? = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
                     if (uri != null) {
-                        resolver.openOutputStream(uri).use { out ->
-                            out?.write(("Contact;Details\n" + callLogs.joinToString("\n")).toByteArray())
+                        // Важное исправление: добавлен безопасный вызов ?.use вместо .use на nullable объекте
+                        resolver.openOutputStream(uri)?.use { out ->
+                            out.write(("Contact;Details\n" + callLogs.joinToString("\n")).toByteArray())
                         }
                         showToast("SUCCESS! Saved ${callLogs.size} contacts to Documents!")
                     } else {
