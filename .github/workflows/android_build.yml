@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Final Polish
+name: Zero to Hero APK Generator - Fixed Syntax
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
         mkdir -p app/src/main/res/xml
         mkdir -p app/src/main/res/values
 
-    # 3. Генерируем gradle.properties (Исправляет ошибку checkDebugAarMetadata)
+    # 3. Генерируем gradle.properties
     - name: Generate gradle.properties
       run: |
         cat << 'EOF' > gradle.properties
@@ -155,11 +155,12 @@ jobs:
         </resources>
         EOF
 
-    # 10. MainActivity на Kotlin
+    # 10. MainActivity на Kotlin (Синтаксически чистая реализация)
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
         package com.example.waparser
+        
         import android.content.Intent
         import android.os.Bundle
         import android.provider.Settings
@@ -168,23 +169,24 @@ jobs:
 
         class MainActivity : AppCompatActivity() {
             override fun onCreate(savedInstanceState: Bundle?) {
-                super.onCreate(savedInstanceState: Bundle?)
-                val button = Button(this).apply {
-                    text = "1. Включить службу\n2. Открыть Звонки в WA"
-                    setOnClickListener {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
+                super.onCreate(savedInstanceState)
+                val button = Button(this)
+                button.text = "1. Включить службу\n2. Открыть Звонки в WA"
+                button.setOnClickListener {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
                 }
                 setContentView(button)
             }
         }
         EOF
 
-    # 11. WhatsappParserService на Kotlin
+    # 11. WhatsappParserService на Kotlin (Без скрытых спецсимволов в логах)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
         package com.example.waparser
+        
         import android.accessibilityservice.AccessibilityService
         import android.view.accessibility.AccessibilityEvent
         import android.view.accessibility.AccessibilityNodeInfo
@@ -253,11 +255,11 @@ jobs:
                     if (dir != null) {
                         val file = File(dir, "whatsapp_calls_archive.csv")
                         file.writeText("Контакт;Информация\n" + callLogs.joinToString("\n"))
-                        Log.d("WAParser", "Логи сохранены: ${file.absolutePath}")
+                        Log.d("WAParser", "Logs saved to: ${file.absolutePath}")
                     }
                     disableSelf()
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Ошибка保存", e)
+                    Log.e("WAParser", "Save error", e)
                 }
             }
 
@@ -278,7 +280,7 @@ jobs:
         curl -sL https://services.gradle.org/distributions/gradle-8.6-bin.zip -o gradle.zip
         unzip -q gradle.zip
 
-    # 14. Финальный запуск компиляции
+    # 14. Запуск компиляции
     - name: Build Debug APK via Isolated Gradle 8.6
       run: ./gradle-8.6/bin/gradle assembleDebug
 
@@ -286,6 +288,6 @@ jobs:
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: final-whatsapp-parser
+        name: fixed-syntax-whatsapp-parser
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
