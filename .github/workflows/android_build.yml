@@ -174,7 +174,7 @@ jobs:
         </resources>
         EOF
 
-    # ИСПРАВЛЕНО: Теперь путь ведет точно на файл MainActivity.kt, а не на директорию
+    # ИСПРАВЛЕНО: Пакет изменен на android.graphics.Typeface
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -184,7 +184,7 @@ jobs:
         import android.net.Uri
         import android.os.Bundle
         import android.provider.Settings
-        import android.view.Typeface
+        import android.graphics.Typeface
         import android.widget.*
         import androidx.appcompat.app.AppCompatActivity
 
@@ -300,6 +300,7 @@ jobs:
         }
         EOF
 
+    # ИСПРАВЛЕНО: Форматирование таблиц переведено на нативный Котлину метод ".format()"
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -538,7 +539,7 @@ jobs:
                     report.append("Last Call Date : ${times.first()}\n\n")
                     
                     report.append("📅 DETAILED TIMELINE TABLE:\n")
-                    report.append(String.format("%-22s | %s\n", "Date / Day", "Occurrences"))
+                    report.append("%-22s | %s\n".format("Date / Day", "Occurrences"))
                     report.append("--------------------------------------\n")
 
                     val daysMap = LinkedHashMap<String, Int>()
@@ -549,7 +550,7 @@ jobs:
 
                     for ((day, count) in daysMap) {
                         val countString = if (count > 1) "($count)" else "1"
-                        report.append(String.format("%-22s | %s\n", day, countString))
+                        report.append("%-22s | %s\n".format(day, countString))
                     }
                 }
 
