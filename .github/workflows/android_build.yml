@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Precision Build
+name: Zero to Hero APK Generator - Final Polish
 
 on:
   push:
@@ -21,7 +21,14 @@ jobs:
         mkdir -p app/src/main/res/xml
         mkdir -p app/src/main/res/values
 
-    # 3. Генерируем корневой settings.gradle
+    # 3. Генерируем gradle.properties (Исправляет ошибку checkDebugAarMetadata)
+    - name: Generate gradle.properties
+      run: |
+        cat << 'EOF' > gradle.properties
+        android.useAndroidX=true
+        EOF
+
+    # 4. Генерируем корневой settings.gradle
     - name: Generate settings.gradle
       run: |
         cat << 'EOF' > settings.gradle
@@ -43,7 +50,7 @@ jobs:
         include ':app'
         EOF
 
-    # 4. Генерируем корневой build.gradle
+    # 5. Генерируем корневой build.gradle
     - name: Generate root build.gradle
       run: |
         cat << 'EOF' > build.gradle
@@ -53,7 +60,7 @@ jobs:
         }
         EOF
 
-    # 5. Генерируем build.gradle для модуля app
+    # 6. Генерируем build.gradle для модуля app
     - name: Generate app build.gradle
       run: |
         cat << 'EOF' > app/build.gradle
@@ -91,7 +98,7 @@ jobs:
         }
         EOF
 
-    # 6. Генерируем AndroidManifest.xml
+    # 7. Генерируем AndroidManifest.xml
     - name: Generate AndroidManifest.xml
       run: |
         cat << 'EOF' > app/src/main/AndroidManifest.xml
@@ -124,7 +131,7 @@ jobs:
         </manifest>
         EOF
 
-    # 7. Конфиг Спец. возможностей
+    # 8. Конфиг Спец. возможностей
     - name: Generate Accessibility Config
       run: |
         cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
@@ -138,7 +145,7 @@ jobs:
             android:canRetrieveWindowContent="true" />
         EOF
 
-    # 8. Строковые ресурсы
+    # 9. Строковые ресурсы
     - name: Generate strings.xml
       run: |
         cat << 'EOF' > app/src/main/res/values/strings.xml
@@ -148,7 +155,7 @@ jobs:
         </resources>
         EOF
 
-    # 9. MainActivity на Kotlin
+    # 10. MainActivity на Kotlin
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -173,7 +180,7 @@ jobs:
         }
         EOF
 
-    # 10. WhatsappParserService на Kotlin
+    # 11. WhatsappParserService на Kotlin
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -250,7 +257,7 @@ jobs:
                     }
                     disableSelf()
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Ошибка сохранения", e)
+                    Log.e("WAParser", "Ошибка保存", e)
                 }
             }
 
@@ -258,27 +265,27 @@ jobs:
         }
         EOF
 
-    # 11. Окружение Java 17
+    # 12. Окружение Java 17
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'zulu'
 
-    # 12. Скачиваем ИМЕННО Gradle 8.6, который запросил компилятор
+    # 13. Изолированный Gradle 8.6
     - name: Download Isolated Gradle 8.6
       run: |
         curl -sL https://services.gradle.org/distributions/gradle-8.6-bin.zip -o gradle.zip
         unzip -q gradle.zip
 
-    # 13. Запуск сборки через изолированный бинарник Gradle 8.6
+    # 14. Финальный запуск компиляции
     - name: Build Debug APK via Isolated Gradle 8.6
       run: ./gradle-8.6/bin/gradle assembleDebug
 
-    # 14. Сбор артефакта
+    # 15. Выгрузка готового APK в артефакты GitHub
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: precision-whatsapp-parser
+        name: final-whatsapp-parser
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
