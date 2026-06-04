@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Multi-Mode Safe Storage
+name: Zero to Hero APK Generator - Multi-Mode Final
 
 on:
   push:
@@ -97,7 +97,7 @@ jobs:
         }
         EOF
 
-    # 7. Генерируем AndroidManifest.xml (Оставляем разрешение на оверлей для Кнопки)
+    # 7. Генерируем AndroidManifest.xml
     - name: Generate AndroidManifest.xml
       run: |
         cat << 'EOF' > app/src/main/AndroidManifest.xml
@@ -156,7 +156,7 @@ jobs:
         </resources>
         EOF
 
-    # 10. Генерируем MainActivity.kt (3 Режима в одном интерфейсе)
+    # 10. Генерируем MainActivity.kt
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -236,7 +236,7 @@ jobs:
         }
         EOF
 
-    # 11. Генерируем WhatsappParserService.kt (Все методы + сохранение в Documents)
+    # 11. Генерируем WhatsappParserService.kt (Добавлен метод showToast + MediaStore для папки Documents)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -259,6 +259,9 @@ jobs:
         import android.os.Environment
         import android.os.Handler
         import android.os.Looper
+        import android.provider.MediaStore
+        import android.content.ContentValues
+        import android.net.Uri
 
         class WhatsappParserService : AccessibilityService() {
             private val callLogs = mutableSetOf<String>()
@@ -272,13 +275,13 @@ jobs:
                 override fun onReceive(context: Context?, intent: Intent?) {
                     when (intent?.action) {
                         "com.example.waparser.CREATE_BUTTON" -> {
-                            showToast("Overlay requested. Re-enable Service if button hidden.")
+                            this@WhatsappParserService.showToast("Overlay requested. Re-enable Service if button hidden.")
                             createFloatingButton()
                         }
                         "com.example.waparser.START_TIMER" -> {
-                            showToast("Timer armed! Go to Calls tab now...")
+                            this@WhatsappParserService.showToast("Timer armed! Go to Calls tab now...")
                             handler.postDelayed({
-                                showToast("Timer triggered parsing!")
+                                this@WhatsappParserService.showToast("Timer triggered parsing!")
                                 noNewDataCounter = 0
                                 parseCurrentScreenAndScroll()
                             }, 5000)
@@ -297,7 +300,7 @@ jobs:
             }
 
             override fun onAccessibilityEvent(event: AccessibilityEvent) {
-                // РЕЖИМ С: Слепоглухонемой триггер на ручной жест прокрутки
+                // РЕЖИМ С: Триггер на ручной жест прокрутки
                 if (!isParsingActive && (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED || event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                     isParsingActive = true
                     noNewDataCounter = 0
@@ -315,7 +318,7 @@ jobs:
                         setBackgroundColor(0xFF00AA00.toInt())
                         setTextColor(0xFFFFFFFF.toInt())
                         setOnClickListener {
-                            showToast("Button triggered parsing...")
+                            this@WhatsappParserService.showToast("Button triggered parsing...")
                             noNewDataCounter = 0
                             parseCurrentScreenAndScroll()
                         }
@@ -354,7 +357,6 @@ jobs:
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
                     
-                    // Парсим блоки времени/дат на основе присланного скриншота (Today, Yesterday, PM, AM, : или даты)
                     if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
                         val potentialContact = foundTexts.getOrNull(i - 1)?.trim() ?: "Unknown"
                         
@@ -411,22 +413,34 @@ jobs:
 
             private fun saveLogsToDisk() {
                 try {
-                    // ПИШЕМ СТРОГО В ПУБЛИЧНЫЕ ДОКУМЕНТЫ (Доступно без ROOT прав!)
-                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-                    if (!dir.exists()) {
-                        dir.mkdirs()
+                    // Используем MediaStore API для сохранения прямо в публичную папку Documents без ROOT прав
+                    val resolver = contentResolver
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, "whatsapp_calls_archive.csv")
+                        put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
                     }
-                    val file = File(dir, "whatsapp_calls_archive.csv")
-                    val header = "Contact;Details\n"
-                    file.writeText(header + callLogs.joinToString("\n"))
                     
-                    showToast("SAVED SUCCESS! Total: ${callLogs.size} logs in Documents folder")
-                    Log.d("WAParser", "Saved to Documents: ${file.absolutePath}")
+                    val uri: Uri? = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
+                    if (uri != null) {
+                        resolver.openOutputStream(uri).use { outputStream ->
+                            outputStream?.write(("Contact;Details\n" + callLogs.joinToString("\n")).toByteArray())
+                        }
+                        showToast("SAVED SUCCESS! Check public Documents folder")
+                    } else {
+                        showToast("Save Error: Uri is null")
+                    }
                 } catch (e: Exception) {
                     Log.e("WAParser", "Write error", e)
                     showToast("Save Error: " + e.message)
                 } finally {
                     isParsingActive = false
+                }
+            }
+
+            private fun showToast(message: String) {
+                handler.post {
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -465,6 +479,6 @@ jobs:
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: final-multi-mode-parser
+        name: multi-mode-documents-parser
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
