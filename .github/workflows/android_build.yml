@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Fixed Build
+name: Zero to Hero APK Generator - Fully Operational
 
 on:
   push:
@@ -132,18 +132,18 @@ jobs:
         </manifest>
         EOF
 
-    # 8. Конфиг службы
+    # 8. Конфиг службы (ИСПРАВЛЕНО: Добавлены жесты и интерактивные окна)
     - name: Generate Accessibility Config
       run: |
         cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
         <?xml version="1.0" encoding="utf-8"?>
         <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
             android:description="@string/accessibility_service_description"
-            android:packageNames="com.whatsapp"
             android:accessibilityEventTypes="typeViewScrolled|typeWindowStateChanged"
-            android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews"
+            android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
             android:accessibilityFeedbackType="feedbackGeneric"
-            android:canRetrieveWindowContent="true" />
+            android:canRetrieveWindowContent="true"
+            android:canPerformGestures="true" />
         EOF
 
     # 9. Ресурсы строк
@@ -243,7 +243,7 @@ jobs:
         }
         EOF
 
-    # 11. Генерируем WhatsappParserService.kt (Тотальное исправление типов и расположения showToast)
+    # 11. Генерируем WhatsappParserService.kt (Полная переработка стабильности кликов и скролла)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -280,7 +280,6 @@ jobs:
                 var instance: WhatsappParserService? = null
             }
 
-            // Выносим на самый верх класса, чтобы компилятор видел метод первее сложных функций
             fun showToast(message: String) {
                 handler.post {
                     Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
@@ -294,9 +293,10 @@ jobs:
             }
 
             fun startTimerLogic() {
-                showToast("Timer armed! Go to Calls tab now...")
+                showToast("Timer armed! Switch to WhatsApp Calls tab...")
                 handler.postDelayed({
-                    showToast("Timer triggered parsing!")
+                    if (isParsingActive) return@postDelayed
+                    showToast("Processing screen...")
                     noNewDataCounter = 0
                     parseCurrentScreenAndScroll()
                 }, 5000)
@@ -308,7 +308,7 @@ jobs:
                     if (pkg == "com.whatsapp") {
                         isParsingActive = true
                         noNewDataCounter = 0
-                        showToast("Manual scroll caught. Starting auto-pilot...")
+                        showToast("Manual scroll caught. Auto-pilot active!")
                         parseCurrentScreenAndScroll()
                     }
                 }
@@ -316,7 +316,7 @@ jobs:
 
             fun createFloatingButton() {
                 if (floatingButton != null) {
-                    showToast("Button already exists")
+                    showToast("Button already active")
                     return
                 }
                 try {
@@ -326,9 +326,13 @@ jobs:
                         setBackgroundColor(0xFF00AA00.toInt())
                         setTextColor(0xFFFFFFFF.toInt())
                         setOnClickListener {
-                            this@WhatsappParserService.showToast("Button activated!")
-                            noNewDataCounter = 0
-                            parseCurrentScreenAndScroll()
+                            if (this@WhatsappParserService.isParsingActive) {
+                                this@WhatsappParserService.showToast("Engine busy...")
+                                return@setOnClickListener
+                            }
+                            text = "[WAIT...]"
+                            this@WhatsappParserService.noNewDataCounter = 0
+                            this@WhatsappParserService.parseCurrentScreenAndScroll()
                         }
                     }
 
@@ -340,14 +344,14 @@ jobs:
                         PixelFormat.TRANSLUCENT
                     ).apply {
                         gravity = Gravity.TOP or Gravity.END
-                        x = 15
-                        y = 450
+                        x = 20
+                        y = 500
                     }
                     windowManager?.addView(floatingButton, params)
-                    showToast("Overlay Button injected successfully!")
+                    showToast("Overlay Button Ready!")
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Overlay failed", e)
-                    showToast("Overlay layout blocked: " + e.message)
+                    Log.e("WAParser", "Overlay Layout Error", e)
+                    showToast("Overlay error: " + e.message)
                 }
             }
 
@@ -355,13 +359,22 @@ jobs:
                 isParsingActive = true
                 val rootNode = rootInActiveWindow
                 if (rootNode == null) {
-                    handler.postDelayed({ parseCurrentScreenAndScroll() }, 1000)
+                    showToast("Error: Screen blind! Open WhatsApp Calls.")
+                    resetButtonText()
+                    isParsingActive = false
                     return
                 }
 
                 val foundTexts = mutableListOf<String>()
                 extractAllTexts(rootNode, foundTexts)
                 
+                if (foundTexts.isEmpty()) {
+                    showToast("No texts found on screen. Ensure WA is in foreground.")
+                    resetButtonText()
+                    isParsingActive = false
+                    return
+                }
+
                 var addedInThisPass = 0
 
                 for (i in 0 until foundTexts.size) {
@@ -381,12 +394,12 @@ jobs:
 
                 if (addedInThisPass > 0) {
                     noNewDataCounter = 0
-                    showToast("Collected: ${callLogs.size} items. Swiping...")
+                    showToast("Captured ${callLogs.size} logs. Swiping...")
                     performHardwareSwipeUp()
                 } else {
                     noNewDataCounter++
                     if (noNewDataCounter < 3) {
-                        showToast("No new records, trying swipe (${noNewDataCounter}/3)...")
+                        showToast("No new data, retrying swipe (${noNewDataCounter}/3)...")
                         performHardwareSwipeUp()
                     } else {
                         saveLogsToDisk()
@@ -426,9 +439,9 @@ jobs:
                 val screenWidth = displayMetrics.widthPixels
 
                 val startX = screenWidth / 2f
-                val startY = screenHeight * 0.8f
+                val startY = screenHeight * 0.75f
                 val endX = screenWidth / 2f
-                val endY = screenHeight * 0.2f
+                val endY = screenHeight * 0.25f
 
                 val swipePath = Path().apply {
                     moveTo(startX, startY)
@@ -436,18 +449,23 @@ jobs:
                 }
 
                 val gestureBuilder = GestureDescription.Builder()
-                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 500))
+                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 450))
 
-                dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+                val checkDispatch = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         super.onCompleted(gestureDescription)
-                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 1500)
+                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 1200)
                     }
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         super.onCancelled(gestureDescription)
                         saveLogsToDisk()
                     }
                 }, null)
+
+                if (!checkDispatch) {
+                    showToast("Critical: Gesture System Rejected. Re-enable Accessibility Service!")
+                    saveLogsToDisk()
+                }
             }
 
             private fun extractAllTexts(node: AccessibilityNodeInfo?, list: MutableList<String>) {
@@ -464,7 +482,19 @@ jobs:
                 }
             }
 
+            private fun resetButtonText() {
+                handler.post {
+                    floatingButton?.text = "PARSE"
+                }
+            }
+
             private fun saveLogsToDisk() {
+                resetButtonText()
+                if (callLogs.isEmpty()) {
+                    showToast("No records found to save.")
+                    isParsingActive = false
+                    return
+                }
                 try {
                     val resolver = contentResolver
                     val contentValues = ContentValues().apply {
@@ -475,17 +505,16 @@ jobs:
                     
                     val uri: Uri? = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
                     if (uri != null) {
-                        // Важное исправление: добавлен безопасный вызов ?.use вместо .use на nullable объекте
                         resolver.openOutputStream(uri)?.use { out ->
                             out.write(("Contact;Details\n" + callLogs.joinToString("\n")).toByteArray())
                         }
-                        showToast("SUCCESS! Saved ${callLogs.size} contacts to Documents!")
+                        showToast("DONE! Saved ${callLogs.size} logs to Documents!")
                     } else {
-                        showToast("Save Fail: Uri error")
+                        showToast("Storage error: URI Null")
                     }
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Write fail", e)
-                    showToast("Save Error: " + e.message)
+                    Log.e("WAParser", "Write error", e)
+                    showToast("Save failure: " + e.message)
                 } finally {
                     isParsingActive = false
                 }
