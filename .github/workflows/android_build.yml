@@ -93,7 +93,6 @@ jobs:
         }
         EOF
 
-    # ИКОНКА ПРИЛОЖЕНИЯ (Пункт 3): Создаем красивый векторный логотип аналитика + звонки
     - name: Generate App Vector Icon
       run: |
         cat << 'EOF' > app/src/main/res/drawable/ic_app_logo.xml
@@ -117,7 +116,6 @@ jobs:
         </vector>
         EOF
 
-    # МАНИФЕСТ: Подвязываем новую иконку вместо дефолтной сетки
     - name: Generate AndroidManifest.xml
       run: |
         cat << 'EOF' > app/src/main/AndroidManifest.xml
@@ -176,10 +174,10 @@ jobs:
         </resources>
         EOF
 
-    # ИНТЕРФЕЙС: ScrollView для бесконечных таблиц + Моноширинный шрифт для красивых колонок
+    # ИСПРАВЛЕНО: Теперь путь ведет точно на файл MainActivity.kt, а не на директорию
     - name: Generate MainActivity.kt
       run: |
-        cat << 'EOF' > app/src/main/java/com/example/waparser
+        cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
         package com.example.waparser
         
         import android.content.Intent
@@ -283,7 +281,7 @@ jobs:
                     id = 2001
                     text = "No metrics collected yet. Trigger the overlay scan inside WhatsApp."
                     textSize = 14f
-                    typeface = Typeface.MONOSPACE  // Обеспечивает ровные колонки таблицы
+                    typeface = Typeface.MONOSPACE
                     setTextColor(0xFF111111.toInt())
                 }
 
@@ -302,7 +300,6 @@ jobs:
         }
         EOF
 
-    # ДВИЖОК СЕРВИСА: Реализация ветвления логики (Пункт 1 и Пункт 2)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -328,7 +325,6 @@ jobs:
         import android.net.Uri
 
         class WhatsappParserService : AccessibilityService() {
-            // Структурированная база данных: Контакт -> Список всех его временных меток звонков
             private val globalLogsMap = mutableMapOf<String, MutableList<String>>()
             private val handler = Handler(Looper.getMainLooper())
             private var windowManager: WindowManager? = null
@@ -361,7 +357,7 @@ jobs:
                     windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
                     floatingButton = Button(this).apply {
                         text = "START SCAN"
-                        setBackgroundColor(0xFF25D366.toInt()) // WA Green
+                        setBackgroundColor(0xFF25D366.toInt())
                         setTextColor(0xFFFFFFFF.toInt())
                         setOnClickListener {
                             if (this@WhatsappParserService.isParsingActive) {
@@ -369,7 +365,7 @@ jobs:
                                 this@WhatsappParserService.processAndBuildReport()
                             } else {
                                 text = "[STOP & REPORT]"
-                                setBackgroundColor(0xFFCC0000.toInt()) // Danger Red
+                                setBackgroundColor(0xFFCC0000.toInt())
                                 this@WhatsappParserService.globalLogsMap.clear()
                                 this@WhatsappParserService.emptyPassStreak = 0
                                 this@WhatsappParserService.parseCurrentScreenAndScroll()
@@ -409,18 +405,15 @@ jobs:
                 val targetFilter = MainActivity.filterContactName.lowercase()
                 var addedInThisSwipe = 0
 
-                // Пробегаем по структуре экрана
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
                     
-                    // Обнаружили паттерн даты/времени звонка
                     if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
                         val detectedContact = findContactNameForTimestamp(foundTexts, i)
                         
                         if (detectedContact != "Unknown Contact") {
                             val lowerContact = detectedContact.lowercase()
                             
-                            // Проверка: Соответствует ли фильтру (если фильтр вообще задан)
                             if (targetFilter.isEmpty() || lowerContact.contains(targetFilter)) {
                                 val currentTimestamps = globalLogsMap.getOrPut(detectedContact) { mutableListOf() }
                                 if (!currentTimestamps.contains(currentText)) {
@@ -507,7 +500,6 @@ jobs:
                 val targetFilter = MainActivity.filterContactName
 
                 if (targetFilter.isEmpty()) {
-                    // ПУНКТ 1: Имя не задано -> Группировка по ВСЕМ контактам
                     report.append("MODE: GLOBAL SCAN (ALL CONTACTS)\n")
                     report.append("--------------------------------------\n")
                     
@@ -526,7 +518,6 @@ jobs:
                         report.append("--------------------------------------\n")
                     }
                 } else {
-                    // ПУНКТ 2: Имя задано -> Подробный Саммари + ТАБЛИЦА дат с группировкой дублей в один день
                     val realKey = globalLogsMap.keys.firstOrNull()
                     if (realKey == null) {
                         MainActivity.updateReportOnUI("Filter mismatch: target object non-identifiable.")
@@ -550,14 +541,12 @@ jobs:
                     report.append(String.format("%-22s | %s\n", "Date / Day", "Occurrences"))
                     report.append("--------------------------------------\n")
 
-                    // Группируем по чистым дням, сохраняя порядок обнаружения (от новых к старым)
                     val daysMap = LinkedHashMap<String, Int>()
                     for (t in times) {
                         val cleanDay = stripTimeToDay(t)
                         daysMap[cleanDay] = (daysMap[cleanDay] ?: 0) + 1
                     }
 
-                    // Отрисовка таблицы дат
                     for ((day, count) in daysMap) {
                         val countString = if (count > 1) "($count)" else "1"
                         report.append(String.format("%-22s | %s\n", day, countString))
@@ -570,7 +559,6 @@ jobs:
             }
 
             private fun stripTimeToDay(timestamp: String): String {
-                // Избавляется от времени "14:23", ", 11:05", оставляя только дату/день недели
                 return timestamp.replace(Regex("\\b\\d{1,2}:\\d{2}\\b"), "").replace(",", "").trim()
             }
 
