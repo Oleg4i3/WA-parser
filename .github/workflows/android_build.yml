@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Ultimate Fix
+name: Zero to Hero APK Generator - Precision Build
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
         include ':app'
         EOF
 
-    # 4. Генерируем корневой build.gradle (Стабильная версия AGP 8.2.2)
+    # 4. Генерируем корневой build.gradle
     - name: Generate root build.gradle
       run: |
         cat << 'EOF' > build.gradle
@@ -124,7 +124,7 @@ jobs:
         </manifest>
         EOF
 
-    # 7. Конфиг Спец. возможностей (целимся в WhatsApp)
+    # 7. Конфиг Спец. возможностей
     - name: Generate Accessibility Config
       run: |
         cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
@@ -173,7 +173,7 @@ jobs:
         }
         EOF
 
-    # 10. Стабильный парсер на Kotlin с полной проверкой типов на null
+    # 10. WhatsappParserService на Kotlin
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -258,27 +258,27 @@ jobs:
         }
         EOF
 
-    # 11. Поднимаем окружение Java 17
+    # 11. Окружение Java 17
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'zulu'
 
-    # 12. Скачиваем чистый дистрибутив Gradle 8.4 напрямую во внутреннюю директорию
-    - name: Download Isolated Gradle 8.4
+    # 12. Скачиваем ИМЕННО Gradle 8.6, который запросил компилятор
+    - name: Download Isolated Gradle 8.6
       run: |
-        curl -sL https://services.gradle.org/distributions/gradle-8.4-bin.zip -o gradle.zip
+        curl -sL https://services.gradle.org/distributions/gradle-8.6-bin.zip -o gradle.zip
         unzip -q gradle.zip
 
-    # 13. Бьем точно в цель: вызываем бинарник скачанного Gradle напрямую, игнорируя системный PATH
-    - name: Build Debug APK via Isolated Gradle
-      run: ./gradle-8.4/bin/gradle assembleDebug
+    # 13. Запуск сборки через изолированный бинарник Gradle 8.6
+    - name: Build Debug APK via Isolated Gradle 8.6
+      run: ./gradle-8.6/bin/gradle assembleDebug
 
-    # 14. Забираем готовый артефакт
+    # 14. Сбор артефакта
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ultimate-whatsapp-parser
+        name: precision-whatsapp-parser
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
