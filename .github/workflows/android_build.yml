@@ -1,4 +1,4 @@
-name: Zero to Hero APK Generator - Multi-Mode Final
+name: Zero to Hero APK Generator - Radical Fix
 
 on:
   push:
@@ -13,21 +13,21 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # 2. Создаем структуру папок
+    # 2. Структура папок
     - name: Create Project Structure
       run: |
         mkdir -p app/src/main/java/com/example/waparser
         mkdir -p app/src/main/res/xml
         mkdir -p app/src/main/res/values
 
-    # 3. Генерируем gradle.properties
+    # 3. Gradle свойства
     - name: Generate gradle.properties
       run: |
         cat << 'EOF' > gradle.properties
         android.useAndroidX=true
         EOF
 
-    # 4. Генерируем корневой settings.gradle
+    # 4. Settings Gradle
     - name: Generate settings.gradle
       run: |
         cat << 'EOF' > settings.gradle
@@ -49,7 +49,7 @@ jobs:
         include ':app'
         EOF
 
-    # 5. Генерируем корневой build.gradle
+    # 5. Root Build Gradle
     - name: Generate root build.gradle
       run: |
         cat << 'EOF' > build.gradle
@@ -59,7 +59,7 @@ jobs:
         }
         EOF
 
-    # 6. Генерируем build.gradle модуля app
+    # 6. App Build Gradle
     - name: Generate app build.gradle
       run: |
         cat << 'EOF' > app/build.gradle
@@ -97,7 +97,7 @@ jobs:
         }
         EOF
 
-    # 7. Генерируем AndroidManifest.xml
+    # 7. AndroidManifest.xml
     - name: Generate AndroidManifest.xml
       run: |
         cat << 'EOF' > app/src/main/AndroidManifest.xml
@@ -132,7 +132,7 @@ jobs:
         </manifest>
         EOF
 
-    # 8. Конфиг Спец. возможностей
+    # 8. Конфиг службы
     - name: Generate Accessibility Config
       run: |
         cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
@@ -146,7 +146,7 @@ jobs:
             android:canRetrieveWindowContent="true" />
         EOF
 
-    # 9. Строковые ресурсы
+    # 9. Ресурсы строк
     - name: Generate strings.xml
       run: |
         cat << 'EOF' > app/src/main/res/values/strings.xml
@@ -156,7 +156,7 @@ jobs:
         </resources>
         EOF
 
-    # 10. Генерируем MainActivity.kt
+    # 10. Генерируем MainActivity.kt (Прямой линк на службу)
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -168,6 +168,7 @@ jobs:
         import android.provider.Settings
         import android.widget.Button
         import android.widget.LinearLayout
+        import android.widget.Toast
         import androidx.appcompat.app.AppCompatActivity
 
         class MainActivity : AppCompatActivity() {
@@ -176,18 +177,18 @@ jobs:
                 
                 val layout = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(30, 30, 30, 30)
+                    setPadding(40, 40, 40, 40)
                 }
 
                 val btnAccessibility = Button(this).apply {
-                    text = "0. Enable Accessibility Service"
+                    text = "1. Enable Accessibility Service"
                     setOnClickListener {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     }
                 }
 
-                val btnOverlay = Button(this).apply {
-                    text = "Mode A: Grant Overlay & Create Button"
+                val btnOverlayPerm = Button(this).apply {
+                    text = "2. Grant Overlay Permission (For Mode A)"
                     setOnClickListener {
                         if (!Settings.canDrawOverlays(this@MainActivity)) {
                             val intent = Intent(
@@ -196,57 +197,61 @@ jobs:
                             )
                             startActivity(intent)
                         } else {
-                            val intentBroadcast = Intent("com.example.waparser.CREATE_BUTTON")
-                            intentBroadcast.setPackage(packageName)
-                            sendBroadcast(intentBroadcast)
+                            Toast.makeText(this@MainActivity, "Overlay already granted!", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
 
-                val btnTimer = Button(this).apply {
+                val btnModeA = Button(this).apply {
+                    text = "Mode A: Launch Overlay Button"
+                    setOnClickListener {
+                        val service = WhatsappParserService.instance
+                        if (service != null) {
+                            if (Settings.canDrawOverlays(this@MainActivity)) {
+                                service.createFloatingButton()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Grant Overlay perm first!", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(this@MainActivity, "Accessibility Service is NOT active yet!", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+
+                val btnModeB = Button(this).apply {
                     text = "Mode B: Start 5s Timer & Open WA"
                     setOnClickListener {
-                        val intentBroadcast = Intent("com.example.waparser.START_TIMER")
-                        intentBroadcast.setPackage(packageName)
-                        sendBroadcast(intentBroadcast)
-
-                        val launchIntent = packageManager.getLaunchIntentForPackage("com.whatsapp")
-                        if (launchIntent != null) {
-                            startActivity(launchIntent)
-                        }
-                    }
-                }
-
-                val btnGesture = Button(this).apply {
-                    text = "Mode C: Info (Just scroll in WA)"
-                    setOnClickListener {
-                        val launchIntent = packageManager.getLaunchIntentForPackage("com.whatsapp")
-                        if (launchIntent != null) {
-                            startActivity(launchIntent)
+                        val service = WhatsappParserService.instance
+                        if (service != null) {
+                            service.startTimerLogic()
+                            val launchIntent = packageManager.getLaunchIntentForPackage("com.whatsapp")
+                            if (launchIntent != null) {
+                                startActivity(launchIntent)
+                            }
+                        } else {
+                            Toast.makeText(this@MainActivity, "Accessibility Service is NOT active yet!", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
 
                 layout.addView(btnAccessibility)
-                layout.addView(btnOverlay)
-                layout.addView(btnTimer)
-                layout.addView(btnGesture)
+                layout.addView(btnOverlayPerm)
+                layout.addView(btnModeA)
+                layout.addView(btnModeB)
                 setContentView(layout)
             }
         }
         EOF
 
-    # 11. Генерируем WhatsappParserService.kt (Добавлен метод showToast + MediaStore для папки Documents)
+    # 11. Генерируем WhatsappParserService.kt (Физический свайп + умный сбор имён)
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
         package com.example.waparser
         
         import android.accessibilityservice.AccessibilityService
-        import android.content.BroadcastReceiver
-        import android.content.Context
-        import android.content.Intent
-        import android.content.IntentFilter
+        import android.accessibilityservice.GestureDescription
+        import android.graphics.Path
         import android.graphics.PixelFormat
         import android.view.Gravity
         import android.view.WindowManager
@@ -271,46 +276,43 @@ jobs:
             private var noNewDataCounter = 0
             private var isParsingActive = false
 
-            private val modeReceiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    when (intent?.action) {
-                        "com.example.waparser.CREATE_BUTTON" -> {
-                            this@WhatsappParserService.showToast("Overlay requested. Re-enable Service if button hidden.")
-                            createFloatingButton()
-                        }
-                        "com.example.waparser.START_TIMER" -> {
-                            this@WhatsappParserService.showToast("Timer armed! Go to Calls tab now...")
-                            handler.postDelayed({
-                                this@WhatsappParserService.showToast("Timer triggered parsing!")
-                                noNewDataCounter = 0
-                                parseCurrentScreenAndScroll()
-                            }, 5000)
-                        }
-                    }
-                }
+            companion object {
+                var instance: WhatsappParserService? = null
             }
 
             override fun onServiceConnected() {
                 super.onServiceConnected()
-                val filter = IntentFilter().apply {
-                    addAction("com.example.waparser.CREATE_BUTTON")
-                    addAction("com.example.waparser.START_TIMER")
-                }
-                registerReceiver(modeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                instance = this
+                showToast("Parser Engine Ready!")
+            }
+
+            fun startTimerLogic() {
+                showToast("Timer armed! Go to Calls tab now...")
+                handler.postDelayed({
+                    showToast("Timer triggered parsing!")
+                    noNewDataCounter = 0
+                    parseCurrentScreenAndScroll()
+                }, 5000)
             }
 
             override fun onAccessibilityEvent(event: AccessibilityEvent) {
-                // РЕЖИМ С: Триггер на ручной жест прокрутки
-                if (!isParsingActive && (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED || event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
-                    isParsingActive = true
-                    noNewDataCounter = 0
-                    showToast("Gesture detected: parsing...")
-                    parseCurrentScreenAndScroll()
+                // Mode C: Автостарт от обычного ручного скролла внутри WhatsApp
+                if (!isParsingActive && event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                    val pkg = event.packageName?.toString()
+                    if (pkg == "com.whatsapp") {
+                        isParsingActive = true
+                        noNewDataCounter = 0
+                        showToast("Manual scroll caught. Starting auto-pilot...")
+                        parseCurrentScreenAndScroll()
+                    }
                 }
             }
 
-            private fun createFloatingButton() {
-                if (floatingButton != null) return
+            fun createFloatingButton() {
+                if (floatingButton != null) {
+                    showToast("Button already exists")
+                    return
+                }
                 try {
                     windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
                     floatingButton = Button(this).apply {
@@ -318,7 +320,7 @@ jobs:
                         setBackgroundColor(0xFF00AA00.toInt())
                         setTextColor(0xFFFFFFFF.toInt())
                         setOnClickListener {
-                            this@WhatsappParserService.showToast("Button triggered parsing...")
+                            this@WhatsappParserService.showToast("Button activated!")
                             noNewDataCounter = 0
                             parseCurrentScreenAndScroll()
                         }
@@ -332,12 +334,14 @@ jobs:
                         PixelFormat.TRANSLUCENT
                     ).apply {
                         gravity = Gravity.TOP or Gravity.END
-                        x = 10
-                        y = 400
+                        x = 15
+                        y = 450
                     }
                     windowManager?.addView(floatingButton, params)
+                    showToast("Overlay Button injected successfully!")
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Overlay creation failed", e)
+                    Log.e("WAParser", "Overlay failed", e)
+                    showToast("Overlay layout blocked: " + e.message)
                 }
             }
 
@@ -357,11 +361,12 @@ jobs:
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
                     
+                    // Обнаруживаем маркеры даты/времени
                     if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
-                        val potentialContact = foundTexts.getOrNull(i - 1)?.trim() ?: "Unknown"
+                        val contactName = findNameForTime(foundTexts, i)
                         
-                        if (potentialContact.length > 1 && potentialContact != currentText && potentialContact != "Recent" && potentialContact != "Calls") {
-                            val logLine = "$potentialContact;$currentText"
+                        if (contactName != "Unknown Contact") {
+                            val logLine = "$contactName;$currentText"
                             if (callLogs.add(logLine)) {
                                 addedInThisPass++
                             }
@@ -369,19 +374,79 @@ jobs:
                     }
                 }
 
-                val scrollableNode = findScrollableContainer(rootNode)
-                if (scrollableNode != null && addedInThisPass > 0) {
+                if (addedInThisPass > 0) {
                     noNewDataCounter = 0
-                    showToast("Collected: ${callLogs.size} logs")
-                    scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                    handler.postDelayed({ parseCurrentScreenAndScroll() }, 1500)
-                } else if (scrollableNode != null && addedInThisPass == 0 && noNewDataCounter < 2) {
-                    noNewDataCounter++
-                    scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                    handler.postDelayed({ parseCurrentScreenAndScroll() }, 1500)
+                    showToast("Collected: ${callLogs.size} items. Swiping...")
+                    performHardwareSwipeUp()
                 } else {
-                    saveLogsToDisk()
+                    noNewDataCounter++
+                    if (noNewDataCounter < 3) {
+                        // Даем 3 попытки свайпнуть на случай микрозадержек прогрузки интерфейса
+                        showToast("No new records, trying swipe (${noNewDataCounter}/3)...")
+                        performHardwareSwipeUp()
+                    } else {
+                        saveLogsToDisk()
+                    }
                 }
+            }
+
+            private fun findNameForTime(texts: List<String>, timeIndex: Int): String {
+                val filterTrash = setOf(
+                    "recent", "calls", "search", "more options", "new call", 
+                    "incoming", "outgoing", "missed", "audio call", "video call", 
+                    "voice call", "arrow", "call again", "unanswered"
+                )
+                // Двигаемся назад от времени, отбрасывая мусор, чтобы найти чистое имя
+                for (k in timeIndex - 1 downTo 0) {
+                    val t = texts[k].trim()
+                    val tLower = t.lowercase()
+                    
+                    if (t.isEmpty() || t.length < 2 || t.contains(":")) continue
+                    
+                    var isTrash = false
+                    for (trash in filterTrash) {
+                        if (tLower.contains(trash)) {
+                            isTrash = true
+                            break
+                        }
+                    }
+                    if (isTrash) continue
+                    
+                    return t
+                }
+                return "Unknown Contact"
+            }
+
+            private fun performHardwareSwipeUp() {
+                val displayMetrics = resources.displayMetrics
+                val screenHeight = displayMetrics.heightPixels
+                val screenWidth = displayMetrics.widthPixels
+
+                // Точки для жесткого свайпа снизу вверх (прокрутка списка вниз)
+                val startX = screenWidth / 2f
+                val startY = screenHeight * 0.8f
+                val endX = screenWidth / 2f
+                val endY = screenHeight * 0.2f
+
+                val swipePath = Path().apply {
+                    moveTo(startX, startY)
+                    lineTo(endX, endY)
+                }
+
+                val gestureBuilder = GestureDescription.Builder()
+                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 500))
+
+                dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
+                        super.onCompleted(gestureDescription)
+                        // Ждем завершения анимации прокрутки и сканируем экран заново
+                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 1500)
+                    }
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        super.onCancelled(gestureDescription)
+                        saveLogsToDisk()
+                    }
+                }, null)
             }
 
             private fun extractAllTexts(node: AccessibilityNodeInfo?, list: MutableList<String>) {
@@ -398,22 +463,8 @@ jobs:
                 }
             }
 
-            private fun findScrollableContainer(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-                if (node == null) return null
-                if (node.isScrollable) return node
-                for (i in 0 until node.childCount) {
-                    val child = node.getChild(i)
-                    if (child != null) {
-                        val result = findScrollableContainer(child)
-                        if (result != null) return result
-                    }
-                }
-                return null
-            }
-
             private fun saveLogsToDisk() {
                 try {
-                    // Используем MediaStore API для сохранения прямо в публичную папку Documents без ROOT прав
                     val resolver = contentResolver
                     val contentValues = ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, "whatsapp_calls_archive.csv")
@@ -423,24 +474,18 @@ jobs:
                     
                     val uri: Uri? = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
                     if (uri != null) {
-                        resolver.openOutputStream(uri).use { outputStream ->
-                            outputStream?.write(("Contact;Details\n" + callLogs.joinToString("\n")).toByteArray())
+                        resolver.openOutputStream(uri).use { out ->
+                            out?.write(("Contact;Details\n" + callLogs.joinToString("\n")).toByteArray())
                         }
-                        showToast("SAVED SUCCESS! Check public Documents folder")
+                        showToast("SUCCESS! Saved ${callLogs.size} contacts to Documents!")
                     } else {
-                        showToast("Save Error: Uri is null")
+                        showToast("Save Fail: Uri error")
                     }
                 } catch (e: Exception) {
-                    Log.e("WAParser", "Write error", e)
+                    Log.e("WAParser", "Write fail", e)
                     showToast("Save Error: " + e.message)
                 } finally {
                     isParsingActive = false
-                }
-            }
-
-            private fun showToast(message: String) {
-                handler.post {
-                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -448,12 +493,12 @@ jobs:
 
             override fun onDestroy() {
                 super.onDestroy()
-                try {
-                    unregisterReceiver(modeReceiver)
-                    if (floatingButton != null && windowManager != null) {
+                instance = null
+                if (floatingButton != null && windowManager != null) {
+                    try {
                         windowManager?.removeView(floatingButton)
-                    }
-                } catch (e: Exception) {}
+                    } catch (e: Exception) {}
+                }
             }
         }
         EOF
@@ -479,6 +524,6 @@ jobs:
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: multi-mode-documents-parser
+        name: multi-mode-hardware-parser
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 5
