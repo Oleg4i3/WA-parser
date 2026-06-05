@@ -299,7 +299,7 @@ jobs:
         }
         EOF
 
-    # ОБНОВЛЕНО: Новая потоковая система отслеживания "умных стыков" между свайпами
+    # ОБНОВЛЕНО: Изменен тип daysMap для агрегации списков точного времени звонков
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -332,7 +332,6 @@ jobs:
             private var emptyPassStreak = 0
             private var isParsingActive = false
             
-            // Хранилище строк предыдущего экрана для расчета перекрытия ("Имя_#_Дата")
             private var lastScreenRows = listOf<String>()
 
             companion object {
@@ -406,7 +405,6 @@ jobs:
                 val foundTexts = mutableListOf<String>()
                 extractAllTexts(rootNode, foundTexts)
                 
-                // Шаг 1: Собираем абсолютно все сырые строки звонков текущего экрана по порядку
                 val currentScreenRows = mutableListOf<String>()
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
@@ -418,7 +416,6 @@ jobs:
                     }
                 }
 
-                // Шаг 2: Вычисляем пересечение (какие элементы мы уже видели на прошлом экране)
                 var overlapIndex = 0
                 if (lastScreenRows.isNotEmpty()) {
                     for (len in lastScreenRows.size downTo 1) {
@@ -433,12 +430,9 @@ jobs:
                     }
                 }
 
-                // Шаг 3: Выделяем только уникальные строки, появившиеся ниже стыка
                 val trulyNewRows = currentScreenRows.drop(overlapIndex)
-                var addedInThisSwipe = 0
-
-                // Шаг 4: Применяем фильтр пользователей ТОЛЬКО к чистому слою новых данных
                 val targetFilter = MainActivity.filterContactName.lowercase()
+                
                 for (row in trulyNewRows) {
                     val parts = row.split("_#_")
                     if (parts.size < 2) continue
@@ -448,14 +442,11 @@ jobs:
                     val lowerContact = contact.lowercase()
                     if (targetFilter.isEmpty() || lowerContact.contains(targetFilter)) {
                         globalLogsMap.getOrPut(contact) { mutableListOf() }.add(timestamp)
-                        addedInThisSwipe++
                     }
                 }
 
-                // Сохраняем состояние экрана для следующего шага
                 lastScreenRows = currentScreenRows
 
-                // Шаг 5: Проверка остановки (если новых строк на экране вообще не найдено)
                 if (trulyNewRows.isEmpty() && currentScreenRows.isNotEmpty()) {
                     emptyPassStreak++
                     if (emptyPassStreak >= 3) {
@@ -569,18 +560,25 @@ jobs:
                     report.append("Last Call Date : ${times.first()}\n\n")
                     
                     report.append("📅 DETAILED TIMELINE TABLE:\n")
-                    report.append("%-22s | %s\n".format("Date / Day", "Occurrences"))
+                    report.append("%-22s | %s\n".format("Date / Day", "Occurrences / Time list"))
                     report.append("--------------------------------------\n")
 
-                    val daysMap = LinkedHashMap<String, Int>()
+                    // Карта группировки: День -> Список таймстампов (времени)
+                    val daysMap = LinkedHashMap<String, MutableList<String>>()
+                    val timeRegex = Regex("\\d{1,2}:\\d{2}")
+                    
                     for (t in times) {
                         val cleanDay = stripTimeToDay(t)
-                        daysMap[cleanDay] = (daysMap[cleanDay] ?: 0) + 1
+                        val timeOnly = timeRegex.find(t)?.value ?: ""
+                        if (timeOnly.isNotEmpty()) {
+                            daysMap.getOrPut(cleanDay) { mutableListOf() }.add(timeOnly)
+                        }
                     }
 
-                    for ((day, count) in daysMap) {
-                        val countString = if (count > 1) "($count)" else "1"
-                        report.append("%-22s | %s\n".format(day, countString))
+                    for ((day, timeList) in daysMap) {
+                        // Разворачиваем список временных меток, чтобы они шли слева направо в хронологическом порядке (утро -> вечер)
+                        val formattedTimes = "(${timeList.reversed().joinToString(", ")})"
+                        report.append("%-22s | %s\n".format(day, formattedTimes))
                     }
                 }
 
@@ -590,7 +588,8 @@ jobs:
             }
 
             private fun stripTimeToDay(timestamp: String): String {
-                return timestamp.replace(Regex("\\b\\d{1,2}:\\d{2}\\b"), "").replace(",", "").trim()
+                val day = timestamp.replace(Regex("\\b\\d{1,2}:\\d{2}\\b"), "").replace(",", "").trim()
+                return if (day.isEmpty()) "Today" else day
             }
 
             private fun backupToStorage(data: String) {
