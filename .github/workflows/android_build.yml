@@ -93,6 +93,7 @@ jobs:
         }
         EOF
 
+    # ОБНОВЛЕНО: Новая векторная графика иконки в форме облачка сообщений ("с клювом")
     - name: Generate App Vector Icon
       run: |
         cat << 'EOF' > app/src/main/res/drawable/ic_app_logo.xml
@@ -103,16 +104,13 @@ jobs:
             android:viewportHeight="108">
             <path
                 android:fillColor="#075E54"
-                android:pathData="M54,54m-48,0a48,48 0,1 1,96 0a48,48 0,1 1,-96 0"/>
+                android:pathData="M54,10C29.7,10 10,29.7 10,54C10,62.5 12.4,70.4 16.6,77.1L11,97L31.5,91.6C38,95.1 45.7,97 54,97C78.3,97 98,77.3 98,54C98,29.7 78.3,10 54,10Z"/>
             <path
                 android:fillColor="#25D366"
-                android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+                android:pathData="M54,14C31.9,14 14,31.9 14,54C14,61.7 16.2,68.9 20,75L15,93L33.6,88.1C39.5,91.3 46.5,93 54,93C76.1,93 94,75.1 94,54C94,31.9 76.1,14 54,14Z"/>
             <path
                 android:fillColor="#FFFFFF"
-                android:pathData="M35,35h38v6h-38z M35,47h26v6h-26z M35,59h32v6h-32z M35,71h18v6h-18z"/>
-            <path
-                android:fillColor="#FFFFFF"
-                android:pathData="M65,77l12,-12l-5,-5l-7,7l-3,-3l-2,2z"/>
+                android:pathData="M35,38h38v5h-38z M35,49h38v5h-38z M35,60h24v5h-24z"/>
         </vector>
         EOF
 
@@ -299,7 +297,7 @@ jobs:
         }
         EOF
 
-    # ОБНОВЛЕНО: Исправлен сбор сырых данных и переписан расчет First/Last Call Date из проверенных ключей таблицы
+    # ОБНОВЛЕНО: Переработан экспорт файлов — имя TXT теперь включает имя контакта
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -409,7 +407,6 @@ jobs:
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
                     
-                    // КРИТИЧЕСКОЕ ОБНОВЛЕНИЕ: Строка ДОЛЖНА содержать двоеточие (время), чтобы отсечь пустые разделители дней вроде "Yesterday"
                     if (currentText.contains(":") && (currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*\\d.*".toRegex()))) {
                         val detectedContact = findContactNameForTimestamp(foundTexts, i)
                         if (detectedContact != "Unknown Contact") {
@@ -523,6 +520,9 @@ jobs:
                 val report = StringBuilder()
                 val targetFilter = MainActivity.filterContactName
                 val timeRegex = Regex("\\d{1,2}:\\d{2}")
+                
+                // Переменная для динамического имени файла
+                var finalFileName = "WA_Analytics_Global.txt"
 
                 if (targetFilter.isEmpty()) {
                     report.append("MODE: GLOBAL SCAN (ALL CONTACTS)\n")
@@ -560,9 +560,13 @@ jobs:
                         MainActivity.updateReportOnUI("Filter mismatch: target object non-identifiable.")
                         return
                     }
+                    
+                    // ОБНОВЛЕНО: Формируем имя файла на основе очищенного имени контакта (поддерживает кириллицу)
+                    val safeContactName = realKey.replace(Regex("[^a-zA-Z0-9а-яА-ЯёЁ_]"), "_").replace(Regex("_+"), "_")
+                    finalFileName = "WA_Analytics_${safeContactName}.txt"
+
                     val times = globalLogsMap[realKey]!!
 
-                    // Сначала генерируем карту дней, очищенную от системного мусора интерфейса
                     val daysMap = LinkedHashMap<String, MutableList<String>>()
                     for (t in times) {
                         val cleanDay = stripTimeToDay(t)
@@ -579,7 +583,6 @@ jobs:
                     }
                     val unitLabel = if (MainActivity.countDaysOnly) "Total active days" else "Total call events"
 
-                    // ОБНОВЛЕНО: Даты вычисляются строго на основе ключей сгенерированной таблицы дней
                     val lastCallDate = daysMap.keys.firstOrNull() ?: "N/A"
                     val firstCallDate = daysMap.keys.lastOrNull() ?: "N/A"
 
@@ -601,7 +604,7 @@ jobs:
 
                 MainActivity.updateReportOnUI(report.toString())
                 showToast("Report rendered successfully!")
-                backupToStorage(report.toString())
+                backupToStorage(report.toString(), finalFileName)
             }
 
             private fun stripTimeToDay(timestamp: String): String {
@@ -609,10 +612,11 @@ jobs:
                 return if (day.isEmpty()) "Today" else day
             }
 
-            private fun backupToStorage(data: String) {
+            // ОБНОВЛЕНО: Метод теперь принимает сгенерированное имя файла
+            private fun backupToStorage(data: String, fileName: String) {
                 try {
                     val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, "WA_Final_Analytics.txt")
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                         put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                         put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
                     }
