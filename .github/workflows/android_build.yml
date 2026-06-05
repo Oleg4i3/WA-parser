@@ -299,7 +299,7 @@ jobs:
         }
         EOF
 
-    # ОБНОВЛЕНО: Изменен тип daysMap для агрегации списков точного времени звонков
+    # ОБНОВЛЕНО: Исправлен сбор сырых данных и переписан расчет First/Last Call Date из проверенных ключей таблицы
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -408,7 +408,9 @@ jobs:
                 val currentScreenRows = mutableListOf<String>()
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
-                    if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
+                    
+                    // КРИТИЧЕСКОЕ ОБНОВЛЕНИЕ: Строка ДОЛЖНА содержать двоеточие (время), чтобы отсечь пустые разделители дней вроде "Yesterday"
+                    if (currentText.contains(":") && (currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*\\d.*".toRegex()))) {
                         val detectedContact = findContactNameForTimestamp(foundTexts, i)
                         if (detectedContact != "Unknown Contact") {
                             currentScreenRows.add("${detectedContact}_#_${currentText}")
@@ -520,23 +522,36 @@ jobs:
 
                 val report = StringBuilder()
                 val targetFilter = MainActivity.filterContactName
+                val timeRegex = Regex("\\d{1,2}:\\d{2}")
 
                 if (targetFilter.isEmpty()) {
                     report.append("MODE: GLOBAL SCAN (ALL CONTACTS)\n")
                     report.append("--------------------------------------\n")
                     
                     for ((contact, times) in globalLogsMap) {
+                        val contactDaysMap = LinkedHashMap<String, MutableList<String>>()
+                        for (t in times) {
+                            val cleanDay = stripTimeToDay(t)
+                            val timeOnly = timeRegex.find(t)?.value ?: ""
+                            if (timeOnly.isNotEmpty()) {
+                                contactDaysMap.getOrPut(cleanDay) { mutableListOf() }.add(timeOnly)
+                            }
+                        }
+
                         val totalMetricsCount = if (MainActivity.countDaysOnly) {
-                            times.map { stripTimeToDay(it) }.distinct().size
+                            contactDaysMap.size
                         } else {
                             times.size
                         }
                         val unit = if (MainActivity.countDaysOnly) "days" else "calls"
                         
+                        val lastCall = contactDaysMap.keys.firstOrNull() ?: "N/A"
+                        val firstCall = contactDaysMap.keys.lastOrNull() ?: "N/A"
+                        
                         report.append("👤 $contact\n")
                         report.append("   • Volume: $totalMetricsCount $unit\n")
-                        report.append("   • Newest: ${times.first()}\n")
-                        report.append("   • Oldest: ${times.last()}\n")
+                        report.append("   • Newest: $lastCall\n")
+                        report.append("   • Oldest: $firstCall\n")
                         report.append("--------------------------------------\n")
                     }
                 } else {
@@ -546,27 +561,9 @@ jobs:
                         return
                     }
                     val times = globalLogsMap[realKey]!!
-                    val totalMetricsCount = if (MainActivity.countDaysOnly) {
-                        times.map { stripTimeToDay(it) }.distinct().size
-                    } else {
-                        times.size
-                    }
-                    val unitLabel = if (MainActivity.countDaysOnly) "Total active days" else "Total call events"
 
-                    report.append("TARGET ANALYSIS SUMMARY:\n")
-                    report.append("Contact Name   : $realKey\n")
-                    report.append("$unitLabel: $totalMetricsCount\n")
-                    report.append("First Call Date: ${times.last()}\n")
-                    report.append("Last Call Date : ${times.first()}\n\n")
-                    
-                    report.append("📅 DETAILED TIMELINE TABLE:\n")
-                    report.append("%-22s | %s\n".format("Date / Day", "Occurrences / Time list"))
-                    report.append("--------------------------------------\n")
-
-                    // Карта группировки: День -> Список таймстампов (времени)
+                    // Сначала генерируем карту дней, очищенную от системного мусора интерфейса
                     val daysMap = LinkedHashMap<String, MutableList<String>>()
-                    val timeRegex = Regex("\\d{1,2}:\\d{2}")
-                    
                     for (t in times) {
                         val cleanDay = stripTimeToDay(t)
                         val timeOnly = timeRegex.find(t)?.value ?: ""
@@ -575,8 +572,28 @@ jobs:
                         }
                     }
 
+                    val totalMetricsCount = if (MainActivity.countDaysOnly) {
+                        daysMap.size
+                    } else {
+                        times.size
+                    }
+                    val unitLabel = if (MainActivity.countDaysOnly) "Total active days" else "Total call events"
+
+                    // ОБНОВЛЕНО: Даты вычисляются строго на основе ключей сгенерированной таблицы дней
+                    val lastCallDate = daysMap.keys.firstOrNull() ?: "N/A"
+                    val firstCallDate = daysMap.keys.lastOrNull() ?: "N/A"
+
+                    report.append("TARGET ANALYSIS SUMMARY:\n")
+                    report.append("Contact Name   : $realKey\n")
+                    report.append("$unitLabel: $totalMetricsCount\n")
+                    report.append("First Call Date: $firstCallDate\n")
+                    report.append("Last Call Date : $lastCallDate\n\n")
+                    
+                    report.append("📅 DETAILED TIMELINE TABLE:\n")
+                    report.append("%-22s | %s\n".format("Date / Day", "Occurrences / Time list"))
+                    report.append("--------------------------------------\n")
+
                     for ((day, timeList) in daysMap) {
-                        // Разворачиваем список временных меток, чтобы они шли слева направо в хронологическом порядке (утро -> вечер)
                         val formattedTimes = "(${timeList.reversed().joinToString(", ")})"
                         report.append("%-22s | %s\n".format(day, formattedTimes))
                     }
