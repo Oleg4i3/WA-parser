@@ -93,7 +93,6 @@ jobs:
         }
         EOF
 
-    # ОБНОВЛЕНО: Новая векторная графика иконки в форме облачка сообщений ("с клювом")
     - name: Generate App Vector Icon
       run: |
         cat << 'EOF' > app/src/main/res/drawable/ic_app_logo.xml
@@ -297,7 +296,7 @@ jobs:
         }
         EOF
 
-    # ОБНОВЛЕНО: Переработан экспорт файлов — имя TXT теперь включает имя контакта
+    # ОБНОВЛЕНО: Добавлен разбор мультипликатора звонков вида "(3)" и ускорен безопасный скроллинг
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -410,7 +409,13 @@ jobs:
                     if (currentText.contains(":") && (currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*\\d.*".toRegex()))) {
                         val detectedContact = findContactNameForTimestamp(foundTexts, i)
                         if (detectedContact != "Unknown Contact") {
-                            currentScreenRows.add("${detectedContact}_#_${currentText}")
+                            // КРИТИЧЕСКОЕ ОБНОВЛЕНИЕ: Извлекаем количество звонков из скобок (например, "(3)") и очищаем имя контакта
+                            val groupMatch = Regex("\\s*\\((\\d+)\\)$").find(detectedContact)
+                            val multiplier = groupMatch?.groupValues?.get(1)?.toInt() ?: 1
+                            val cleanedContact = detectedContact.replace(Regex("\\s*\\(\\d+\\)$"), "").trim()
+                            
+                            // Сохраняем строку с метаинформацией о множителе
+                            currentScreenRows.add("${cleanedContact}_#_${currentText}_#_${multiplier}")
                         }
                     }
                 }
@@ -434,13 +439,18 @@ jobs:
                 
                 for (row in trulyNewRows) {
                     val parts = row.split("_#_")
-                    if (parts.size < 2) continue
+                    if (parts.size < 3) continue
                     val contact = parts[0]
                     val timestamp = parts[1]
+                    val multiplier = parts[2].toIntOrNull() ?: 1
                     
                     val lowerContact = contact.lowercase()
                     if (targetFilter.isEmpty() || lowerContact.contains(targetFilter)) {
-                        globalLogsMap.getOrPut(contact) { mutableListOf() }.add(timestamp)
+                        val list = globalLogsMap.getOrPut(contact) { mutableListOf() }
+                        // Добавляем таймстамп столько раз, сколько звонков скрыто в этой строке
+                        repeat(multiplier) {
+                            list.add(timestamp)
+                        }
                     }
                 }
 
@@ -456,7 +466,7 @@ jobs:
                     }
                 } else {
                     emptyPassStreak = 0
-                    showToast("Advanced parsing active. Moving down...")
+                    showToast("Scanning logs...")
                     performHardwareSwipeUp()
                 }
             }
@@ -482,6 +492,7 @@ jobs:
                 return "Unknown Contact"
             }
 
+            // ОБНОВЛЕНО: Тайминги скроллинга изменены на скоростной турбо-профиль (250мс свайп, 650мс кулдаун)
             private fun performHardwareSwipeUp() {
                 val metrics = resources.displayMetrics
                 val swipePath = Path().apply {
@@ -489,12 +500,12 @@ jobs:
                     lineTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.25f)
                 }
                 val gestureBuilder = GestureDescription.Builder()
-                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 380))
+                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 250))
 
                 val status = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         super.onCompleted(gestureDescription)
-                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 1100)
+                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 650)
                     }
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         super.onCancelled(gestureDescription)
@@ -521,7 +532,6 @@ jobs:
                 val targetFilter = MainActivity.filterContactName
                 val timeRegex = Regex("\\d{1,2}:\\d{2}")
                 
-                // Переменная для динамического имени файла
                 var finalFileName = "WA_Analytics_Global.txt"
 
                 if (targetFilter.isEmpty()) {
@@ -561,7 +571,6 @@ jobs:
                         return
                     }
                     
-                    // ОБНОВЛЕНО: Формируем имя файла на основе очищенного имени контакта (поддерживает кириллицу)
                     val safeContactName = realKey.replace(Regex("[^a-zA-Z0-9а-яА-ЯёЁ_]"), "_").replace(Regex("_+"), "_")
                     finalFileName = "WA_Analytics_${safeContactName}.txt"
 
@@ -612,7 +621,6 @@ jobs:
                 return if (day.isEmpty()) "Today" else day
             }
 
-            // ОБНОВЛЕНО: Метод теперь принимает сгенерированное имя файла
             private fun backupToStorage(data: String, fileName: String) {
                 try {
                     val values = ContentValues().apply {
