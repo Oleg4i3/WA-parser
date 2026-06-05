@@ -174,7 +174,6 @@ jobs:
         </resources>
         EOF
 
-    # ИСПРАВЛЕНО: Пакет изменен на android.graphics.Typeface
     - name: Generate MainActivity.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/MainActivity.kt
@@ -300,7 +299,7 @@ jobs:
         }
         EOF
 
-    # ИСПРАВЛЕНО: Форматирование таблиц переведено на нативный Котлину метод ".format()"
+    # ОБНОВЛЕНО: Новая потоковая система отслеживания "умных стыков" между свайпами
     - name: Generate WhatsappParserService.kt
       run: |
         cat << 'EOF' > app/src/main/java/com/example/waparser/WhatsappParserService.kt
@@ -332,6 +331,9 @@ jobs:
             private var floatingButton: Button? = null
             private var emptyPassStreak = 0
             private var isParsingActive = false
+            
+            // Хранилище строк предыдущего экрана для расчета перекрытия ("Имя_#_Дата")
+            private var lastScreenRows = listOf<String>()
 
             companion object {
                 var instance: WhatsappParserService? = null
@@ -368,6 +370,7 @@ jobs:
                                 text = "[STOP & REPORT]"
                                 setBackgroundColor(0xFFCC0000.toInt())
                                 this@WhatsappParserService.globalLogsMap.clear()
+                                this@WhatsappParserService.lastScreenRows = emptyList()
                                 this@WhatsappParserService.emptyPassStreak = 0
                                 this@WhatsappParserService.parseCurrentScreenAndScroll()
                             }
@@ -403,41 +406,68 @@ jobs:
                 val foundTexts = mutableListOf<String>()
                 extractAllTexts(rootNode, foundTexts)
                 
-                val targetFilter = MainActivity.filterContactName.lowercase()
-                var addedInThisSwipe = 0
-
+                // Шаг 1: Собираем абсолютно все сырые строки звонков текущего экрана по порядку
+                val currentScreenRows = mutableListOf<String>()
                 for (i in 0 until foundTexts.size) {
                     val currentText = foundTexts[i].trim()
-                    
                     if (currentText.contains(":") || currentText.contains("Today") || currentText.contains("Yesterday") || currentText.matches(".*[A-Za-z]+\\s+\\d+.*".toRegex())) {
                         val detectedContact = findContactNameForTimestamp(foundTexts, i)
-                        
                         if (detectedContact != "Unknown Contact") {
-                            val lowerContact = detectedContact.lowercase()
-                            
-                            if (targetFilter.isEmpty() || lowerContact.contains(targetFilter)) {
-                                val currentTimestamps = globalLogsMap.getOrPut(detectedContact) { mutableListOf() }
-                                if (!currentTimestamps.contains(currentText)) {
-                                    currentTimestamps.add(currentText)
-                                    addedInThisSwipe++
-                                }
+                            currentScreenRows.add("${detectedContact}_#_${currentText}")
+                        }
+                    }
+                }
+
+                // Шаг 2: Вычисляем пересечение (какие элементы мы уже видели на прошлом экране)
+                var overlapIndex = 0
+                if (lastScreenRows.isNotEmpty()) {
+                    for (len in lastScreenRows.size downTo 1) {
+                        if (len <= currentScreenRows.size) {
+                            val suffix = lastScreenRows.subList(lastScreenRows.size - len, lastScreenRows.size)
+                            val prefix = currentScreenRows.subList(0, len)
+                            if (suffix == prefix) {
+                                overlapIndex = len
+                                break
                             }
                         }
                     }
                 }
 
-                if (addedInThisSwipe > 0) {
-                    emptyPassStreak = 0
-                    showToast("Captured $addedInThisSwipe new logs. Swiping...")
-                    performHardwareSwipeUp()
-                } else {
-                    emptyPassStreak++
-                    if (emptyPassStreak < 3) {
-                        performHardwareSwipeUp()
-                    } else {
-                        showToast("Data exhaustion reached.")
-                        processAndBuildReport()
+                // Шаг 3: Выделяем только уникальные строки, появившиеся ниже стыка
+                val trulyNewRows = currentScreenRows.drop(overlapIndex)
+                var addedInThisSwipe = 0
+
+                // Шаг 4: Применяем фильтр пользователей ТОЛЬКО к чистому слою новых данных
+                val targetFilter = MainActivity.filterContactName.lowercase()
+                for (row in trulyNewRows) {
+                    val parts = row.split("_#_")
+                    if (parts.size < 2) continue
+                    val contact = parts[0]
+                    val timestamp = parts[1]
+                    
+                    val lowerContact = contact.lowercase()
+                    if (targetFilter.isEmpty() || lowerContact.contains(targetFilter)) {
+                        globalLogsMap.getOrPut(contact) { mutableListOf() }.add(timestamp)
+                        addedInThisSwipe++
                     }
+                }
+
+                // Сохраняем состояние экрана для следующего шага
+                lastScreenRows = currentScreenRows
+
+                // Шаг 5: Проверка остановки (если новых строк на экране вообще не найдено)
+                if (trulyNewRows.isEmpty() && currentScreenRows.isNotEmpty()) {
+                    emptyPassStreak++
+                    if (emptyPassStreak >= 3) {
+                        showToast("Absolute bottom reached.")
+                        processAndBuildReport()
+                    } else {
+                        performHardwareSwipeUp()
+                    }
+                } else {
+                    emptyPassStreak = 0
+                    showToast("Advanced parsing active. Moving down...")
+                    performHardwareSwipeUp()
                 }
             }
 
@@ -465,16 +495,16 @@ jobs:
             private fun performHardwareSwipeUp() {
                 val metrics = resources.displayMetrics
                 val swipePath = Path().apply {
-                    moveTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.78f)
-                    lineTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.22f)
+                    moveTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.75f)
+                    lineTo(metrics.widthPixels / 2f, metrics.heightPixels * 0.25f)
                 }
                 val gestureBuilder = GestureDescription.Builder()
-                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 420))
+                gestureBuilder.addStroke(GestureDescription.StrokeDescription(swipePath, 0, 380))
 
                 val status = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         super.onCompleted(gestureDescription)
-                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 1300)
+                        handler.postDelayed({ parseCurrentScreenAndScroll() }, 1100)
                     }
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         super.onCancelled(gestureDescription)
@@ -483,7 +513,7 @@ jobs:
                 }, null)
 
                 if (!status) {
-                    showToast("System blocked gesture. Toggle accessibility!")
+                    showToast("Navigation blocked. Re-enable accessibility!")
                     processAndBuildReport()
                 }
             }
@@ -493,7 +523,7 @@ jobs:
                 isParsingActive = false
 
                 if (globalLogsMap.isEmpty()) {
-                    MainActivity.updateReportOnUI("Execution done: Zero analytical nodes discovered.")
+                    MainActivity.updateReportOnUI("Execution done: Zero target logs collected.")
                     return
                 }
 
